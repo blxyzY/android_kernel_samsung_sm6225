@@ -5508,6 +5508,15 @@ static bool sock_filter_is_valid_access(int off, int size,
 					       prog->expected_attach_type);
 }
 
+static int bpf_noop_prologue(struct bpf_insn *insn_buf, bool direct_write,
+			     const struct bpf_prog *prog)
+{
+	/* Neither direct read nor direct write requires any preliminary
+	 * action.
+	 */
+	return 0;
+}
+
 static int bpf_unclone_prologue(struct bpf_insn *insn_buf, bool direct_write,
 				const struct bpf_prog *prog, int drop_verdict)
 {
@@ -7076,6 +7085,7 @@ const struct bpf_verifier_ops xdp_verifier_ops = {
 	.get_func_proto		= xdp_func_proto,
 	.is_valid_access	= xdp_is_valid_access,
 	.convert_ctx_access	= xdp_convert_ctx_access,
+	.gen_prologue		= bpf_noop_prologue,
 };
 
 const struct bpf_prog_ops xdp_prog_ops = {
@@ -7174,6 +7184,7 @@ const struct bpf_verifier_ops sk_msg_verifier_ops = {
 	.get_func_proto		= sk_msg_func_proto,
 	.is_valid_access	= sk_msg_is_valid_access,
 	.convert_ctx_access	= sk_msg_convert_ctx_access,
+	.gen_prologue		= bpf_noop_prologue,
 };
 
 const struct bpf_prog_ops sk_msg_prog_ops = {
