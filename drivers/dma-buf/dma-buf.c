@@ -98,7 +98,26 @@ out:
 			     dentry->d_name.name, ret > 0 ? name : "");
 }
 
-static void dma_buf_release(struct dentry *dentry)
+static const struct dentry_operations dma_buf_dentry_ops = {
+	.d_dname = dmabuffs_dname,
+};
+
+static struct vfsmount *dma_buf_mnt;
+
+static struct dentry *dma_buf_fs_mount(struct file_system_type *fs_type,
+		int flags, const char *name, void *data)
+{
+	return mount_pseudo(fs_type, NULL, &dma_buf_dentry_ops,
+			DMA_BUF_MAGIC);
+}
+
+static struct file_system_type dma_buf_fs_type = {
+	.name = "dmabuf",
+	.mount = dma_buf_fs_mount,
+	.kill_sb = kill_anon_super,
+};
+
+static int dma_buf_release(struct inode *inode, struct file *file)
 {
 	struct dma_buf *dmabuf;
 	int dtor_ret = 0;
