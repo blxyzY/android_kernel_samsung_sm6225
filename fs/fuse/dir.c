@@ -1023,7 +1023,7 @@ static int fuse_update_get_attr(struct inode *inode, struct file *file,
 	else
 		sync = time_before64(fi->i_time, get_jiffies_64());
 
-	if (sync || test_bit(FUSE_I_ATTR_FORCE_SYNC, &fi->state)) {
+	if (sync) {
 		forget_all_cached_acls(inode);
 		err = fuse_do_getattr(inode, stat, file);
 	} else if (stat) {
