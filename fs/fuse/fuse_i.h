@@ -235,6 +235,17 @@ struct fuse_arg {
 	void *value;
 };
 
+/**
+ * Reference to lower filesystem file for read/write operations handled in
+ * passthrough mode.
+ * This struct also tracks the credentials to be used for handling read/write
+ * operations.
+ */
+struct fuse_passthrough {
+       struct file *filp;
+       struct cred *cred;
+};
+
 /** FUSE page descriptor */
 struct fuse_page_desc {
 	unsigned int length;
@@ -476,6 +487,7 @@ struct fuse_fs_context {
 	bool group_id_present:1;
 	bool default_permissions:1;
 	bool allow_other:1;
+	bool destroy:1;
 	unsigned int max_read;
 	unsigned int blksize;
 	const char *subtype;
@@ -968,6 +980,13 @@ void fuse_send_init(struct fuse_conn *fc);
 int fuse_fill_super_common(struct super_block *sb, struct fuse_fs_context *ctx);
 
 /**
+ * Disassociate fuse connection from superblock and kill the superblock
+ *
+ * Calls kill_anon_super(), do not use with bdev mounts.
+ */
+void fuse_kill_sb_anon(struct super_block *sb);
+
+/**
  * Add connection to control filesystem
  */
 int fuse_ctl_add_conn(struct fuse_conn *fc);
@@ -1090,5 +1109,6 @@ unsigned int fuse_len_args(unsigned int numargs, struct fuse_arg *args);
  * Get the next unique ID for a request
  */
 u64 fuse_get_unique(struct fuse_iqueue *fiq);
+void fuse_free_conn(struct fuse_conn *fc);
 
 #endif /* _FS_FUSE_I_H */
