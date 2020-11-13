@@ -43,9 +43,10 @@ int __fsverity_verify_signature(const struct inode *inode, const u8 *signature,
 				u32 sig_size, const u8 *file_digest,
 				unsigned int digest_algorithm)
 {
+	const struct inode *inode = vi->inode;
+	const struct fsverity_hash_alg *hash_alg = vi->tree_params.hash_alg;
+	const u32 sig_size = le32_to_cpu(desc->sig_size);
 	struct fsverity_formatted_digest *d;
-	struct fsverity_hash_alg *hash_alg = fsverity_get_hash_alg(inode,
-							digest_algorithm);
 	int err;
 
 	if (IS_ERR(hash_alg))
