@@ -455,7 +455,9 @@ int erofs_try_to_free_all_cached_pages(struct erofs_sb_info *sbi,
 
 		/* barrier is implied in the following 'unlock_page' */
 		WRITE_ONCE(pcl->compressed_pages[i], NULL);
-		detach_page_private(page);
+
+		set_page_private(page, 0);
+		ClearPagePrivate(page);
 		unlock_page(page);
 	}
 	return 0;
@@ -479,8 +481,11 @@ int erofs_try_to_free_cached_page(struct address_space *mapping,
 		}
 		erofs_workgroup_unfreeze(&pcl->obj, 1);
 
-		if (ret)
-			detach_page_private(page);
+		if (ret) {
+			set_page_private(page, 0);
+			ClearPagePrivate(page);
+			put_page(page);
+		}
 	}
 	return ret;
 }
@@ -852,7 +857,7 @@ hitted:
 retry:
 	err = z_erofs_attach_page(clt, page, page_type,
 				  clt->mode >= COLLECT_PRIMARY_FOLLOWED);
-	/* should allocate an additional staging page for pagevec */
+	/* should allocate an additional short-lived page for pagevec */
 	if (err == -EAGAIN) {
 		struct page *const newpage =
 				alloc_page(GFP_NOFS | __GFP_NOFAIL);
@@ -940,6 +945,11 @@ static void z_erofs_decompress_kickoff(struct z_erofs_decompressqueue *io,
 		return;
 	}
 	z_erofs_decompressqueue_work(&io->u.work);
+}
+
+static bool z_erofs_page_is_invalidated(struct page *page)
+{
+	return !page->mapping && !z_erofs_is_shortlived_page(page);
 }
 
 static bool z_erofs_page_is_invalidated(struct page *page)
@@ -1312,6 +1322,12 @@ repeat:
 	put_page(page);
 out_allocpage:
 	page = erofs_allocpage(pagepool, gfp | __GFP_NOFAIL);
+	if (!tocache || add_to_page_cache_lru(page, mc, index + nr, gfp)) {
+		/* turn into temporary page if fails */
+		set_page_private(page, Z_EROFS_SHORTLIVED_PAGE);
+		tocache = false;
+	}
+
 	if (oldpage != cmpxchg(&pcl->compressed_pages[nr], oldpage, page)) {
 		list_add(&page->lru, pagepool);
 		cond_resched();
