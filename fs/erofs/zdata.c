@@ -1322,26 +1322,18 @@ repeat:
 	put_page(page);
 out_allocpage:
 	page = erofs_allocpage(pagepool, gfp | __GFP_NOFAIL);
-	if (!tocache || add_to_page_cache_lru(page, mc, index + nr, gfp)) {
-		/* turn into temporary page if fails */
-		set_page_private(page, Z_EROFS_SHORTLIVED_PAGE);
-		tocache = false;
-	}
-
 	if (oldpage != cmpxchg(&pcl->compressed_pages[nr], oldpage, page)) {
 		list_add(&page->lru, pagepool);
 		cond_resched();
 		goto repeat;
 	}
-out_tocache:
 	if (!tocache || add_to_page_cache_lru(page, mc, index + nr, gfp)) {
 		/* turn into temporary page if fails (1 ref) */
 		set_page_private(page, Z_EROFS_SHORTLIVED_PAGE);
 		goto out;
 	}
-	attach_page_private(page, pcl);
-	/* drop a refcount added by allocpage (then we have 2 refs here) */
-	put_page(page);
+	set_page_private(page, (unsigned long)pcl);
+	SetPagePrivate(page);
 
 out:	/* the only exit (for tracing and debugging) */
 	return page;
