@@ -1110,7 +1110,7 @@ static int z_erofs_decompress_pcluster(struct super_block *sb,
 
 out:
 	/* must handle all compressed pages before ending pages */
-	for (i = 0; i < pcl->pclusterpages; ++i) {
+	for (i = 0; i < clusterpages; ++i) {
 		page = compressed_pages[i];
 
 		if (erofs_page_is_managed(sbi, page))
