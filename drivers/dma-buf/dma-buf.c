@@ -99,30 +99,7 @@ out:
 			     dentry->d_name.name, ret > 0 ? name : "");
 }
 
-static const struct dentry_operations dma_buf_dentry_ops = {
-	.d_dname = dmabuffs_dname,
-};
-
-static struct vfsmount *dma_buf_mnt;
-
-static int dma_buf_fs_init_context(struct fs_context *fc)
-{
-	struct pseudo_fs_context *ctx;
-
-	ctx = init_pseudo(fc, DMA_BUF_MAGIC);
-		if (!ctx)
-			return -ENOMEM;
-	ctx->dops = &dma_buf_dentry_ops;
-	return 0;
-}
-
-static struct file_system_type dma_buf_fs_type = {
-	.name = "dmabuf",
-	.init_fs_context = dma_buf_fs_init_context,
-	.kill_sb = kill_anon_super,
-};
-
-static int dma_buf_release(struct inode *inode, struct file *file)
+static void dma_buf_release(struct dentry *dentry)
 {
 	struct dma_buf *dmabuf;
 	int dtor_ret = 0;
@@ -185,16 +162,20 @@ static const struct dentry_operations dma_buf_dentry_ops = {
 
 static struct vfsmount *dma_buf_mnt;
 
-static struct dentry *dma_buf_fs_mount(struct file_system_type *fs_type,
-		int flags, const char *name, void *data)
+static int dma_buf_fs_init_context(struct fs_context *fc)
 {
-	return mount_pseudo(fs_type, "dmabuf:", NULL, &dma_buf_dentry_ops,
-			DMA_BUF_MAGIC);
+	struct pseudo_fs_context *ctx;
+
+	ctx = init_pseudo(fc, DMA_BUF_MAGIC);
+		if (!ctx)
+			return -ENOMEM;
+	ctx->dops = &dma_buf_dentry_ops;
+	return 0;
 }
 
 static struct file_system_type dma_buf_fs_type = {
 	.name = "dmabuf",
-	.mount = dma_buf_fs_mount,
+	.init_fs_context = dma_buf_fs_init_context,
 	.kill_sb = kill_anon_super,
 };
 
