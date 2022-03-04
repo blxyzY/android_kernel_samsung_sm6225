@@ -1230,7 +1230,6 @@ static void process_init_reply(struct fuse_mount *fm, struct fuse_args *args,
 		fc->minor = arg->minor;
 		fc->max_write = arg->minor < 5 ? 4096 : arg->max_write;
 		fc->max_write = max_t(unsigned, 4096, fc->max_write);
-		fc->task = get_task_struct(current);
 		fc->conn_init = 1;
 	}
 	kfree(ia);
@@ -1305,8 +1304,6 @@ void fuse_free_conn(struct fuse_conn *fc)
 {
 	WARN_ON(!list_empty(&fc->devices));
 	kfree_rcu(fc, rcu);
-	if (fc->task)
-		put_task_struct(fc->task);
 }
 EXPORT_SYMBOL_GPL(fuse_free_conn);
 
