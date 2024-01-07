@@ -46,6 +46,20 @@ config SECURITY_SELINUX_DISABLE
 
 	  If you are unsure how to answer this question, answer N.
 
+config SECURITY_SELINUX_ALWAYS_ENFORCE
+	bool "NSA SELinux Always Enforcing"
+	depends on SECURITY_SELINUX_DEVELOP
+	default n
+	help
+	  This option will prevent anything from setting SELinux to permissive.
+
+config SECURITY_SELINUX_ALWAYS_PERMISSIVE
+	bool "NSA SELinux Always Permissive"
+	depends on SECURITY_SELINUX_DEVELOP
+	default n
+	help
+	  This option will prevent anything from setting SELinux to enforcing.
+
 config SECURITY_SELINUX_DEVELOP
 	bool "NSA SELinux Development Support"
 	depends on SECURITY_SELINUX
