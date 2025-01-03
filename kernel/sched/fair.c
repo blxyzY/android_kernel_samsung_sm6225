@@ -6735,13 +6735,17 @@ static int select_idle_cpu(struct task_struct *p, struct sched_domain *sd, int t
 
 	cpumask_and(cpus, sched_domain_span(sd), &p->cpus_allowed);
 
-	for_each_cpu_wrap(cpu, cpus, target) {
+	for_each_cpu_wrap(cpu, sched_domain_span(sd), target) {
 		if (!--nr)
 			return -1;
-		if (available_idle_cpu(cpu) || sched_idle_cpu(cpu))
+		if (!cpumask_test_cpu(cpu, &p->cpus_allowed))
+			continue;
+		if (cpu_isolated(cpu))
+			continue;
+		if (available_idle_cpu(cpu))
 			break;
 	}
-
+	
 	time = local_clock() - time;
 	cost = this_sd->avg_scan_cost;
 	delta = (s64)(time - cost) / 8;
