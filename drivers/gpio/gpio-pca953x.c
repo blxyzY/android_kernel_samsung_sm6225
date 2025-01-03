@@ -1382,40 +1382,7 @@ static int pca953x_remove(struct i2c_client *client)
 #define OF_957X(__nrgpio, __int) (void *)(__nrgpio | PCA957X_TYPE | __int)
 
 static const struct of_device_id pca953x_dt_ids[] = {
-	{ .compatible = "nxp,pca9505", .data = OF_953X(40, PCA_INT), },
-	{ .compatible = "nxp,pca9534", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "nxp,pca9535", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "nxp,pca9536", .data = OF_953X( 4, 0), },
-	{ .compatible = "nxp,pca9537", .data = OF_953X( 4, PCA_INT), },
-	{ .compatible = "nxp,pca9538", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "nxp,pca9539", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "nxp,pca9554", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "nxp,pca9555", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "nxp,pca9556", .data = OF_953X( 8, 0), },
-	{ .compatible = "nxp,pca9557", .data = OF_953X( 8, 0), },
-	{ .compatible = "nxp,pca9574", .data = OF_957X( 8, PCA_INT), },
-	{ .compatible = "nxp,pca9575", .data = OF_957X(16, PCA_INT), },
-	{ .compatible = "nxp,pca9698", .data = OF_953X(40, 0), },
-
-	{ .compatible = "nxp,pcal6524", .data = OF_953X(24, PCA_LATCH_INT), },
-	{ .compatible = "nxp,pcal9555a", .data = OF_953X(16, PCA_LATCH_INT), },
-
-	{ .compatible = "maxim,max7310", .data = OF_953X( 8, 0), },
-	{ .compatible = "maxim,max7312", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "maxim,max7313", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "maxim,max7315", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "maxim,max7318", .data = OF_953X(16, PCA_INT), },
-
-	{ .compatible = "ti,pca6107", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "ti,pca9536", .data = OF_953X( 4, 0), },
-	{ .compatible = "ti,tca6408", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "ti,tca6416", .data = OF_953X(16, PCA_INT), },
-	{ .compatible = "ti,tca6424", .data = OF_953X(24, PCA_INT), },
-
-	{ .compatible = "onnn,pca9654", .data = OF_953X( 8, PCA_INT), },
-	{ .compatible = "onnn,pca9655", .data = OF_953X(16, PCA_INT), },
-
-	{ .compatible = "exar,xra1202", .data = OF_953X( 8, 0), },
+	{ .compatible = "nxp,pca953x", .data = OF_953X(24, PCA_INT|PCA_PCAL), },
 	{ }
 };
 

@@ -1070,7 +1070,7 @@ done:
 static int hci_sock_bind(struct socket *sock, struct sockaddr *addr,
 			 int addr_len)
 {
-    /*
+#if 0
 	struct sockaddr_hci haddr;
 	struct sock *sk = sock->sk;
 	struct hci_dev *hdev = NULL;
@@ -1362,7 +1362,8 @@ static int hci_sock_bind(struct socket *sock, struct sockaddr *addr,
 done:
 	release_sock(sk);
 	return err;
-    */
+#endif
+
     return 0;
 }
 
