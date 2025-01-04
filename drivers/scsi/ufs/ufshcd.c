@@ -13021,6 +13021,11 @@ int ufshcd_shutdown(struct ufs_hba *hba)
 out:
 	if (ret)
 		dev_err(hba->dev, "%s failed, err %d\n", __func__, ret);
+	
+#if defined(SEC_UFS_ERROR_COUNT)
+	SEC_ufs_print_err_info(hba);
+#endif
+
 	/* allow force shutdown even in case of errors */
 	return 0;
 }
