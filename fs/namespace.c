@@ -2331,7 +2331,6 @@ static int do_remount(struct path *path, int ms_flags, int sb_flags,
 	    ((mnt->mnt.mnt_flags & MNT_ATIME_MASK) != (mnt_flags & MNT_ATIME_MASK))) {
 		return -EPERM;
 	}
-
 	err = security_sb_remount(sb, data);
 	if (err)
 		return err;
