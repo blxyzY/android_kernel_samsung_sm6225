@@ -1115,7 +1115,8 @@ void add_disk_randomness(struct gendisk *disk)
 }
 EXPORT_SYMBOL_GPL(add_disk_randomness);
 
-void __cold rand_initialize_disk(struct gendisk *disk)
+#ifdef CONFIG_BLOCK
+void rand_initialize_disk(struct gendisk *disk)
 {
 	struct timer_rand_state *state;
 
