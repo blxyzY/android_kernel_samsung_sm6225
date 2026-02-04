@@ -49,7 +49,7 @@ config IOSCHED_ZEN
 
 config IOSCHED_ANXIETY
 	tristate "Anxiety I/O scheduler"
-	default n
+	default y
 	---help---
 	  The Anxiety I/O scheduler prioritizes latency over everything
 	  else. When a request comes in, it will use a lighweight
@@ -58,7 +58,7 @@ config IOSCHED_ANXIETY
 choice
 
 	prompt "Default I/O scheduler"
-	default DEFAULT_CFQ
+	default DEFAULT_ANXIETY
 	help
 	  Select the I/O scheduler which will be used by default for all
 	  block devices.
