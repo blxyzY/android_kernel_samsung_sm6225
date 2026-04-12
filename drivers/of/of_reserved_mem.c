@@ -68,6 +68,13 @@ int __init __weak early_init_dt_alloc_reserved_memory_arch(phys_addr_t size,
 }
 #endif
 
+static bool __init need_memsize_skip(unsigned long node, const char *uname)
+{
+	if (!strncmp(uname, "disp_rdump_region", 17))
+		return true;
+	return false;
+}
+
 /**
  * res_mem_save_node() - save fdt node for second pass initialization
  */
@@ -75,6 +82,9 @@ void __init fdt_reserved_mem_save_node(unsigned long node, const char *uname,
 				      phys_addr_t base, phys_addr_t size)
 {
 	struct reserved_mem *rmem = &reserved_mem[reserved_mem_count];
+
+	if (need_memsize_skip(node, uname))
+		return;
 
 	if (reserved_mem_count == ARRAY_SIZE(reserved_mem)) {
 		pr_err("not enough space all defined regions.\n");
@@ -89,6 +99,13 @@ void __init fdt_reserved_mem_save_node(unsigned long node, const char *uname,
 	reserved_mem_count++;
 	return;
 }
+
+#ifdef CONFIG_ION_RBIN_HEAP
+static bool __init under_4GB_device(void)
+{
+	return memblock_phys_mem_size() <= ((phys_addr_t)4 << 30);
+}
+#endif
 
 /**
  * res_mem_alloc_size() - allocate reserved memory described by 'size', 'align'
@@ -114,6 +131,11 @@ static int __init __reserved_mem_alloc_size(unsigned long node,
 		return -EINVAL;
 	}
 	size = dt_mem_next_cell(dt_root_size_cells, &prop);
+
+#ifdef CONFIG_ION_RBIN_HEAP
+	if (!strncmp(uname, "camera_mem", 4) && under_4GB_device())
+		size = 0x0;
+#endif
 
 	nomap = of_get_flat_dt_prop(node, "no-map", NULL) != NULL;
 
@@ -277,6 +299,7 @@ void __init fdt_init_reserved_mem(void)
 		int len;
 		const __be32 *prop;
 		int err = 0;
+		bool nomap;
 
 		prop = of_get_flat_dt_prop(node, "phandle", &len);
 		if (!prop)
@@ -287,8 +310,17 @@ void __init fdt_init_reserved_mem(void)
 		if (rmem->size == 0)
 			err = __reserved_mem_alloc_size(node, rmem->name,
 						 &rmem->base, &rmem->size);
-		if (err == 0)
+		if (err == 0) {
+			nomap = of_get_flat_dt_prop(node, "no-map", NULL) != NULL;
 			__reserved_mem_init_node(rmem);
+#ifdef CONFIG_ION_RBIN_HEAP
+			if (of_get_flat_dt_prop(node, "ion,recyclable", NULL))
+				rmem->reusable = true;
+#endif
+			memblock_memsize_record(rmem->name, rmem->base,
+						rmem->size, nomap,
+						rmem->reusable);
+		}
 	}
 }
 

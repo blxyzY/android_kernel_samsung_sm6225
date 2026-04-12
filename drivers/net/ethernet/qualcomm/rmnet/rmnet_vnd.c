@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * RMNET Data virtual network driver
  *
@@ -20,6 +19,7 @@
 
 #include <soc/qcom/qmi_rmnet.h>
 #include <soc/qcom/rmnet_qmi.h>
+#include <uapi/linux/msm_rmnet.h>
 
 /* RX/TX Fixup */
 
@@ -58,7 +58,6 @@ static netdev_tx_t rmnet_vnd_start_xmit(struct sk_buff *skb,
 	int ip_type;
 	u32 mark;
 	unsigned int len;
-	bool need_to_drop = false;
 
 	priv = netdev_priv(dev);
 	if (priv->real_dev) {
@@ -67,14 +66,6 @@ static netdev_tx_t rmnet_vnd_start_xmit(struct sk_buff *skb,
 		mark = skb->mark;
 		len = skb->len;
 		trace_rmnet_xmit_skb(skb);
-
-		qmi_rmnet_get_flow_state(dev, skb, &need_to_drop);
-		if (unlikely(need_to_drop)) {
-			this_cpu_inc(priv->pcpu_stats->stats.tx_drops);
-			kfree_skb(skb);
-			return NETDEV_TX_OK;
-		}
-
 		rmnet_egress_handler(skb);
 		qmi_rmnet_burst_fc_check(dev, ip_type, mark, len);
 		qmi_rmnet_work_maybe_restart(rmnet_get_rmnet_port(dev));
@@ -189,6 +180,46 @@ static u16 rmnet_vnd_select_queue(struct net_device *dev,
 	return (txq < dev->real_num_tx_queues) ? txq : 0;
 }
 
+static int rmnet_vnd_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
+{
+	int rc = 0;
+	struct rmnet_ioctl_data_s ioctl_data;
+
+	pr_err("%s: [%s]: rmnet_ipa got ioctl number 0x%08x", __func__, dev->name, cmd);
+
+	switch (cmd) {
+	/*  Flow enable  */
+	case RMNET_IOCTL_FLOW_ENABLE:
+		pr_err("[%s] %s: enabled flow +++", dev->name, __func__);
+		if (copy_from_user(&ioctl_data, ifr->ifr_ifru.ifru_data,
+				   sizeof(struct rmnet_ioctl_data_s))) {
+			rc = -EFAULT;
+			break;
+		}
+		tc_qdisc_flow_control(dev, ioctl_data.u.tcm_handle, 1);
+		pr_err("[%s] %s: enabled flow ---", dev->name, __func__);
+		break;
+
+	/*  Flow disable  */
+	case RMNET_IOCTL_FLOW_DISABLE:
+		pr_err("[%s] %s: disabled flow +++", dev->name, __func__);
+		if (copy_from_user(&ioctl_data, ifr->ifr_ifru.ifru_data,
+				   sizeof(struct rmnet_ioctl_data_s))) {
+			rc = -EFAULT;
+			break;
+		}
+		tc_qdisc_flow_control(dev, ioctl_data.u.tcm_handle, 0);
+		pr_err("[%s] %s: disabled flow ---", dev->name, __func__);
+		break;
+
+	default:
+		pr_err("%s: [%s] unsupported cmd[%d]", __func__, dev->name, cmd);
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
 static const struct net_device_ops rmnet_vnd_ops = {
 	.ndo_start_xmit = rmnet_vnd_start_xmit,
 	.ndo_change_mtu = rmnet_vnd_change_mtu,
@@ -199,6 +230,7 @@ static const struct net_device_ops rmnet_vnd_ops = {
 	.ndo_uninit     = rmnet_vnd_uninit,
 	.ndo_get_stats64 = rmnet_get_stats64,
 	.ndo_select_queue = rmnet_vnd_select_queue,
+	.ndo_do_ioctl = rmnet_vnd_ioctl,
 };
 
 static const char rmnet_gstrings_stats[][ETH_GSTRING_LEN] = {

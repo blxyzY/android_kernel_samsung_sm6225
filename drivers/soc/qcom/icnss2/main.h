@@ -435,6 +435,10 @@ struct icnss_priv {
 	struct list_head icnss_tcdev_list;
 	struct mutex tcdev_lock;
 	u32 hw_trc_override;
+#ifdef CONFIG_SEC_SS_CNSS_FEATURE_SYSFS
+	struct kobject *wifi_kobj;
+    struct completion macloader_done;
+#endif /* CONFIG_SEC_SS_CNSS_FEATURE_SYSFS */
 };
 
 struct icnss_reg_info {

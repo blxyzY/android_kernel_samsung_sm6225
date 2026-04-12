@@ -49,6 +49,8 @@
 
 #include <acpi/ghes.h>
 
+#include <linux/sec_debug.h>
+
 struct fault_info {
 	int	(*fn)(unsigned long addr, unsigned int esr,
 		      struct pt_regs *regs);
@@ -162,15 +164,25 @@ void show_pte(unsigned long addr)
 	} else {
 		pr_alert("[%016lx] address between user and kernel address ranges\n",
 			 addr);
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+		sec_debug_store_pte((unsigned long)addr, 1);
+#endif
 		return;
 	}
 
 	pr_alert("%s pgtable: %luk pages, %u-bit VAs, pgdp = %p\n",
 		 mm == &init_mm ? "swapper" : "user", PAGE_SIZE / SZ_1K,
 		 VA_BITS, mm->pgd);
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_store_pte((unsigned long)mm->pgd, 0);
+#endif
 	pgdp = pgd_offset(mm, addr);
 	pgd = READ_ONCE(*pgdp);
 	pr_alert("[%016lx] pgd=%016llx", addr, pgd_val(pgd));
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_store_pte((unsigned long)addr, 1);
+	sec_debug_store_pte((unsigned long)pgd_val(pgd), 2);
+#endif
 
 	do {
 		pud_t *pudp, pud;
@@ -183,18 +195,27 @@ void show_pte(unsigned long addr)
 		pudp = pud_offset(pgdp, addr);
 		pud = READ_ONCE(*pudp);
 		pr_cont(", pud=%016llx", pud_val(pud));
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+		sec_debug_store_pte((unsigned long)pud_val(pud), 3);
+#endif
 		if (pud_none(pud) || pud_bad(pud))
 			break;
 
 		pmdp = pmd_offset(pudp, addr);
 		pmd = READ_ONCE(*pmdp);
 		pr_cont(", pmd=%016llx", pmd_val(pmd));
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+		sec_debug_store_pte((unsigned long)pmd_val(pmd), 4);
+#endif
 		if (pmd_none(pmd) || pmd_bad(pmd))
 			break;
 
 		ptep = pte_offset_map(pmdp, addr);
 		pte = READ_ONCE(*ptep);
 		pr_cont(", pte=%016llx", pte_val(pte));
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+		sec_debug_store_pte((unsigned long)pte_val(pte), 5);
+#endif
 		pte_unmap(ptep);
 	} while(0);
 
@@ -308,11 +329,19 @@ static void __do_kernel_fault(unsigned long addr, unsigned int esr,
 		msg = "paging request";
 	}
 
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_store_extc_idx(false);
+#endif
 	die_kernel_fault(msg, addr, esr, regs);
 }
 
 static void __do_user_fault(struct siginfo *info, unsigned int esr)
 {
+	if (IS_ENABLED(CONFIG_SEC_DEBUG) && current->pid == 0x1) {
+		pr_err("[%s] trap before tragedy\n", current->comm);
+		panic("init");
+	}
+
 	current->thread.fault_address = (unsigned long)info->si_addr;
 
 	/*
@@ -786,6 +815,10 @@ asmlinkage void __exception do_mem_abort(unsigned long addr, unsigned int esr,
 	const struct fault_info *inf = esr_to_fault_info(esr);
 	struct siginfo info;
 
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	if (!user_mode(regs))
+		sec_debug_save_fault_info(esr, inf->name, addr, 0UL);
+#endif
 	if (!inf->fn(addr, esr, regs))
 		return;
 
@@ -843,6 +876,10 @@ asmlinkage void __exception do_sp_pc_abort(unsigned long addr,
 	info.si_errno = 0;
 	info.si_code  = BUS_ADRALN;
 	info.si_addr  = (void __user *)addr;
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_save_fault_info(esr, esr_get_class_string(esr),
+			(unsigned long)regs->pc, (unsigned long)regs->sp);
+#endif
 	arm64_notify_die("SP/PC alignment exception", regs, &info, esr);
 }
 
@@ -918,6 +955,9 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 	if (cortex_a76_erratum_1463225_debug_handler(regs))
 		return 0;
 
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+	sec_debug_save_fault_info(esr, inf->name, addr_if_watchpoint, 0UL);
+#endif
 	/*
 	 * Tell lockdep we disabled irqs in entry.S. Do nothing if they were
 	 * already disabled to preserve the last enabled/disabled addresses.

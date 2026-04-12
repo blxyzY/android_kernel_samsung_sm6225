@@ -663,6 +663,7 @@ static void blk_account_io_merge(struct request *req)
 		cpu = part_stat_lock();
 		part = req->part;
 
+		part_round_stats(req->q, cpu, part);
 		part_dec_in_flight(req->q, part, rq_data_dir(req));
 
 		hd_struct_put(part);
@@ -754,6 +755,7 @@ static struct request *attempt_merge(struct request_queue *q,
 	 * 'next' is going away, so update stats accordingly
 	 */
 	blk_account_io_merge(next);
+	blk_queue_io_vol_merge(q, next->cmd_flags, -1, 0);
 
 	req->ioprio = ioprio_best(req->ioprio, next->ioprio);
 	if (blk_rq_cpu_valid(next))

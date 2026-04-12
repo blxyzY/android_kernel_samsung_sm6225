@@ -131,7 +131,7 @@ static void mmc_bus_shutdown(struct device *dev)
 {
 	struct mmc_driver *drv = to_mmc_driver(dev->driver);
 	struct mmc_card *card = mmc_dev_to_card(dev);
-	struct mmc_host *host = card->host;
+	struct mmc_host *host;
 	int ret;
 
 	if (!drv) {
@@ -143,6 +143,11 @@ static void mmc_bus_shutdown(struct device *dev)
 		pr_debug("%s: %s: card is NULL\n", dev_name(dev), __func__);
 		return;
 	}
+
+	host = card->host;
+
+	/* disable rescan in shutdown sequence */
+	host->rescan_disable = 1;
 
 	if (dev->driver && drv->shutdown)
 		drv->shutdown(card);
@@ -373,6 +378,15 @@ int mmc_add_card(struct mmc_card *card)
 			mmc_card_hs400es(card) ? "Enhanced strobe " : "",
 			mmc_card_ddr52(card) ? "DDR " : "",
 			uhs_bus_speed_mode, type, card->rca);
+		ST_LOG("%s: new %s%s%s%s%s%s card at address %04x\n",
+			mmc_hostname(card->host),
+			mmc_card_uhs(card) ? "ultra high speed " :
+			(mmc_card_hs(card) ? "high speed " : ""),
+			mmc_card_hs400(card) ? "HS400 " :
+			(mmc_card_hs200(card) ? "HS200 " : ""),
+			mmc_card_hs400es(card) ? "Enhanced strobe " : "",
+			mmc_card_ddr52(card) ? "DDR " : "",
+			uhs_bus_speed_mode, type, card->rca);
 	}
 
 #ifdef CONFIG_DEBUG_FS
@@ -396,6 +410,27 @@ int mmc_add_card(struct mmc_card *card)
 	mmc_card_set_present(card);
 
 	return 0;
+}
+
+static void mmc_store_errinfo_into_stlog(struct mmc_card *card)
+{
+	struct mmc_card_error_log *err_log;
+	struct mmc_card_status_err_log *status_err_log;
+	u64 total_c_cnt = 0;
+	u64 total_t_cnt = 0;
+
+	err_log = card->err_log;
+	status_err_log = &card->status_err_log;
+
+	mmc_check_error_count(err_log, &total_c_cnt, &total_t_cnt);
+
+	ST_LOG("%s: \"GE\":\"%d\",\"CC\":\"%d\"," \
+			"\"ECC\":\"%d\",\"WP\":\"%d\",\"OOR\":\"%d\"," \
+			"\"CRC\":\"%lld\",\"TMO\":\"%lld\"\n",
+			mmc_hostname(card->host),
+			status_err_log->ge_cnt, status_err_log->cc_cnt,
+			status_err_log->ecc_cnt, status_err_log->wp_cnt,
+			status_err_log->oor_cnt, total_c_cnt, total_t_cnt);
 }
 
 /*
@@ -422,6 +457,9 @@ void mmc_remove_card(struct mmc_card *card)
 		} else {
 			pr_info("%s: card %04x removed\n",
 				mmc_hostname(card->host), card->rca);
+			ST_LOG("%s: card %04x removed\n",
+				mmc_hostname(card->host), card->rca);
+			mmc_store_errinfo_into_stlog(card);
 		}
 		device_del(&card->dev);
 		of_node_put(card->dev.of_node);

@@ -46,7 +46,8 @@ static void syncobj_destroy_object(struct kgsl_drawobj *drawobj)
 		struct kgsl_drawobj_sync_event *event = &syncobj->synclist[i];
 
 		if (event->type == KGSL_CMD_SYNCPOINT_TYPE_FENCE) {
-			struct event_fence_info *priv = event->priv;
+			struct event_fence_info *priv = event ?
+					event->priv : NULL;
 
 			if (priv) {
 				kfree(priv->fences);
@@ -113,7 +114,8 @@ void kgsl_dump_syncpoints(struct kgsl_device *device,
 		}
 		case KGSL_CMD_SYNCPOINT_TYPE_FENCE: {
 			int j;
-			struct event_fence_info *info = event->priv;
+			struct event_fence_info *info = event ?
+					event->priv : NULL;
 
 			for (j = 0; info && j < info->num_fences; j++)
 				dev_err(device->dev, "[%d]  fence: %s\n",
@@ -179,7 +181,8 @@ static void syncobj_timer(struct timer_list *t)
 			break;
 		case KGSL_CMD_SYNCPOINT_TYPE_FENCE: {
 			int j;
-			struct event_fence_info *info = event->priv;
+			struct event_fence_info *info = event ?
+					event->priv : NULL;
 
 			for (j = 0; info && j < info->num_fences; j++)
 				dev_err(device->dev, "       [%u] FENCE %s\n",
@@ -419,7 +422,7 @@ EXPORT_SYMBOL(kgsl_drawobj_destroy);
 static bool drawobj_sync_fence_func(void *priv)
 {
 	struct kgsl_drawobj_sync_event *event = priv;
-	struct event_fence_info *info = event->priv;
+	struct event_fence_info *info = event ? event->priv : NULL;
 	int i;
 
 	for (i = 0; info && i < info->num_fences; i++)
@@ -454,7 +457,7 @@ drawobj_get_sync_timeline_priv(void __user *uptr, u64 usize, u32 count)
 	for (i = 0; i < count; i++, uptr += usize) {
 		struct kgsl_timeline_val val;
 
-		if (copy_struct_from_user(&val, sizeof(val), uptr, usize))
+		if (kgsl_copy_struct_from_user(&val, sizeof(val), uptr, usize))
 			continue;
 
 		priv[i].timeline = val.timeline;
@@ -477,7 +480,7 @@ static int drawobj_add_sync_timeline(struct kgsl_device *device,
 	unsigned int id;
 	int ret;
 
-	if (copy_struct_from_user(&sync, sizeof(sync), uptr, usize))
+	if (kgsl_copy_struct_from_user(&sync, sizeof(sync), uptr, usize))
 		return -EFAULT;
 
 	fence = kgsl_timelines_to_fence_array(device, sync.timelines,
@@ -543,7 +546,7 @@ static int drawobj_add_sync_fence(struct kgsl_device *device,
 	struct event_fence_info *priv;
 	unsigned int id, i;
 
-	if (copy_struct_from_user(&sync, sizeof(sync), data, datasize))
+	if (kgsl_copy_struct_from_user(&sync, sizeof(sync), data, datasize))
 		return -EFAULT;
 
 	kref_get(&drawobj->refcount);
@@ -673,7 +676,7 @@ static int drawobj_add_sync_timestamp_from_user(struct kgsl_device *device,
 {
 	struct kgsl_cmd_syncpoint_timestamp timestamp;
 
-	if (copy_struct_from_user(&timestamp, sizeof(timestamp),
+	if (kgsl_copy_struct_from_user(&timestamp, sizeof(timestamp),
 			data, datasize))
 		return -EFAULT;
 
@@ -872,7 +875,7 @@ int kgsl_drawobj_add_timeline(struct kgsl_device_private *dev_priv,
 	struct kgsl_gpu_aux_command_timeline cmd;
 	int i, ret;
 
-	if (copy_struct_from_user(&cmd, sizeof(cmd), src, cmdsize))
+	if (kgsl_copy_struct_from_user(&cmd, sizeof(cmd), src, cmdsize))
 		return -EFAULT;
 
 	if (!cmd.count)
@@ -889,7 +892,7 @@ int kgsl_drawobj_add_timeline(struct kgsl_device_private *dev_priv,
 	for (i = 0; i < cmd.count; i++) {
 		struct kgsl_timeline_val val;
 
-		if (copy_struct_from_user(&val, sizeof(val), src,
+		if (kgsl_copy_struct_from_user(&val, sizeof(val), src,
 			cmd.timelines_size)) {
 			ret = -EFAULT;
 			goto err;

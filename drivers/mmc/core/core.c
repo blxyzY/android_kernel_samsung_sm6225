@@ -52,10 +52,14 @@
 #include "sd_ops.h"
 #include "sdio_ops.h"
 
+#if IS_ENABLED(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+
 /* The max erase timeout, used when host->max_busy_timeout isn't specified */
 #define MMC_ERASE_TIMEOUT_MS	(60 * 1000) /* 60 s */
 
-static const unsigned freqs[] = { 400000, 300000, 200000, 100000 };
+static const unsigned freqs[] = { 400000, 300000 };
 
 /*
  * Enabling software CRCs on the data blocks can be a significant (30%)
@@ -1765,6 +1769,45 @@ int __mmc_claim_host(struct mmc_host *host, struct mmc_ctx *ctx,
 EXPORT_SYMBOL(__mmc_claim_host);
 
 /**
+ *   mmc_try_claim_host - try exclusively to claim a host
+ *   and keep trying for given time, with a gap of 10ms
+ *   @host: mmc host to claim
+ *   @dealy_ms: delay in ms
+ *
+ *   Returns %1 if the host is claimed, %0 otherwise.
+ */
+int mmc_try_claim_host(struct mmc_host *host, struct mmc_ctx *ctx,
+		     unsigned int delay_ms)
+{
+	int claimed_host = 0;
+	struct task_struct *task = ctx ? NULL : current;
+	unsigned long flags;
+	int retry_cnt = delay_ms/10;
+	bool pm = false;
+
+	do {
+		spin_lock_irqsave(&host->lock, flags);
+		if (!host->claimed || mmc_ctx_matches(host, ctx, task)) {
+			host->claimed = 1;
+			mmc_ctx_set_claimer(host, ctx, task);
+			host->claim_cnt += 1;
+			claimed_host = 1;
+			if (host->claim_cnt == 1)
+				pm = true;
+		}
+		spin_unlock_irqrestore(&host->lock, flags);
+		if (!claimed_host)
+			mmc_delay(10);
+	} while (!claimed_host && retry_cnt--);
+
+	if (pm)
+		pm_runtime_get_sync(mmc_dev(host));
+
+	return claimed_host;
+}
+EXPORT_SYMBOL(mmc_try_claim_host);
+
+/**
  *	mmc_release_host - release a host
  *	@host: mmc host to release
  *
@@ -2464,7 +2507,7 @@ int mmc_set_uhs_voltage(struct mmc_host *host, u32 ocr)
 
 	err = mmc_wait_for_cmd(host, &cmd, 0);
 	if (err)
-		return err;
+		goto power_cycle;
 
 	if (!mmc_host_is_spi(host) && (cmd.resp[0] & R1_ERROR))
 		return -EIO;
@@ -3532,6 +3575,25 @@ static int mmc_rescan_try_freq(struct mmc_host *host, unsigned freq)
 	return -EIO;
 }
 
+#if IS_ENABLED(CONFIG_SEC_ABC)
+void _mmc_trigger_abc_event(struct mmc_host *host)
+{
+	if (host->ops->get_cd && host->ops->get_cd(host)) {
+		host->card_removed_cnt++;
+		if ((host->card_removed_cnt % 5) == 0)
+#if IS_ENABLED(CONFIG_SEC_FACTORY)
+			sec_abc_send_event("MODULE=storage@INFO=sd_removed_err");
+#else
+			sec_abc_send_event("MODULE=storage@WARN=sd_removed_err");
+#endif
+	}
+}
+#else
+void _mmc_trigger_abc_event(struct mmc_host *host)
+{
+}
+#endif
+
 int _mmc_detect_card_removed(struct mmc_host *host)
 {
 	int ret;
@@ -3556,6 +3618,9 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 	if (ret) {
 		mmc_card_set_removed(host->card);
 		pr_debug("%s: card remove detected\n", mmc_hostname(host));
+		ST_LOG("<%s> %s: card remove detected\n", __func__,
+				mmc_hostname(host));
+		_mmc_trigger_abc_event(host);
 	}
 
 	return ret;
@@ -3616,6 +3681,13 @@ void mmc_rescan(struct work_struct *work)
 	unsigned long flags;
 	struct mmc_host *host =
 		container_of(work, struct mmc_host, detect.work);
+	int i;
+
+	pr_info("%s: %s: disable%d, entered%d, bus %s, card %s.\n",
+			mmc_hostname(host), __func__,
+			host->rescan_disable, host->rescan_entered,
+			host->bus_dead ? "DD" : "OK",
+			host->card ? "present" : "not present");
 
 	spin_lock_irqsave(&host->lock, flags);
 	if (host->rescan_disable) {
@@ -3676,7 +3748,13 @@ void mmc_rescan(struct work_struct *work)
 		goto out;
 	}
 
-	mmc_rescan_try_freq(host, host->f_min);
+	for (i = 0; i < ARRAY_SIZE(freqs); i++) {
+		if (!mmc_rescan_try_freq(host, max(freqs[i], host->f_min)))
+			break;
+		if (freqs[i] <= host->f_min)
+			break;
+	}
+
 	host->err_stats[MMC_ERR_CMD_TIMEOUT] = 0;
 	mmc_release_host(host);
 
@@ -3694,6 +3772,8 @@ void mmc_start_host(struct mmc_host *host)
 
 	if (!(host->caps2 & MMC_CAP2_NO_PRESCAN_POWERUP))
 		mmc_power_up(host, host->ocr_avail);
+	else
+		mmc_power_off(host);
 
 	mmc_gpiod_request_cd_irq(host);
 	mmc_release_host(host);
@@ -3787,15 +3867,18 @@ static int mmc_pm_notify(struct notifier_block *notify_block,
 
 		spin_lock_irqsave(&host->lock, flags);
 		host->rescan_disable = 0;
-		if (host->ops->get_cd)
+		if (host->ops->get_cd) {
 			present = host->ops->get_cd(host);
-
+			mmc_gpiod_update_status(host, present);
+		}
+#ifndef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 		if (mmc_bus_manual_resume(host) &&
 				!host->ignore_bus_resume_flags &&
 				present) {
 			spin_unlock_irqrestore(&host->lock, flags);
 			break;
 		}
+#endif
 		spin_unlock_irqrestore(&host->lock, flags);
 		_mmc_detect_change(host, 0, false);
 

@@ -3,10 +3,6 @@
  * Copyright (c) 2018-2021 The Linux Foundation. All rights reserved.
  */
 
-/*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- */
-
 #ifndef __QG_CORE_H__
 #define __QG_CORE_H__
 
@@ -79,7 +75,6 @@ struct qg_dt {
 	bool			multi_profile_load;
 	bool			tcss_enable;
 	bool			bass_enable;
-	bool			batt_less;
 };
 
 struct qg_esr_data {

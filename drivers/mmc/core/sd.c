@@ -138,6 +138,10 @@ static int mmc_decode_csd(struct mmc_card *card)
 			csd->erase_size = UNSTUFF_BITS(resp, 39, 7) + 1;
 			csd->erase_size <<= csd->write_blkbits - 9;
 		}
+
+		/* permanent write protection */
+		if (UNSTUFF_BITS(resp, 13, 1))
+			mmc_card_set_readonly(card);
 		break;
 	case 1:
 		/*
@@ -172,6 +176,10 @@ static int mmc_decode_csd(struct mmc_card *card)
 		csd->write_blkbits = 9;
 		csd->write_partial = 0;
 		csd->erase_size = 1;
+
+		/* permanent write protection */
+		if (UNSTUFF_BITS(resp, 13, 1))
+			mmc_card_set_readonly(card);
 		break;
 	default:
 		pr_err("%s: unrecognised CSD structure version %d\n",
@@ -1221,7 +1229,17 @@ static void mmc_sd_detect(struct mmc_host *host)
 {
 	int err;
 
-	mmc_get_card(host->card, NULL);
+	/*
+	 * Try to acquire claim host. If failed to get the lock in 2 sec,
+	 * just return; This is to ensure that when this call is invoked
+	 * due to pm_suspend, not to block suspend for longer duration.
+	 */
+	pm_runtime_get_sync(&host->card->dev);
+	if (!mmc_try_claim_host(host, NULL, 2000)) {
+		pm_runtime_mark_last_busy(&host->card->dev);
+		pm_runtime_put_autosuspend(&host->card->dev);
+		return;
+	}
 
 	if (host->ops->get_cd && !host->ops->get_cd(host)) {
 		err = -ENOMEDIUM;
@@ -1313,7 +1331,6 @@ static int _mmc_sd_resume(struct mmc_host *host)
 
 	if (host->ops->get_cd && !host->ops->get_cd(host)) {
 		err = -ENOMEDIUM;
-		mmc_card_clr_suspended(host->card);
 		goto out;
 	}
 
@@ -1327,7 +1344,6 @@ static int _mmc_sd_resume(struct mmc_host *host)
 	} else if (err) {
 		goto out;
 	}
-	mmc_card_clr_suspended(host->card);
 	err = mmc_resume_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to resume clock scaling (%d)\n",
@@ -1335,6 +1351,7 @@ static int _mmc_sd_resume(struct mmc_host *host)
 		goto out;
 	}
 out:
+	mmc_card_clr_suspended(host->card);
 	mmc_log_string(host, "Exit err: %d\n", err);
 	mmc_release_host(host);
 	return err;
@@ -1359,7 +1376,6 @@ static int _mmc_sd_deferred_resume(struct mmc_host *host)
 	} else if (err) {
 		goto out;
 	}
-	mmc_card_clr_suspended(host->card);
 	err = mmc_resume_clk_scaling(host);
 	if (err) {
 		pr_err("%s: %s: fail to resume clock scaling (%d)\n",
@@ -1367,6 +1383,7 @@ static int _mmc_sd_deferred_resume(struct mmc_host *host)
 		goto out;
 	}
 out:
+	mmc_card_clr_suspended(host->card);
 	mmc_log_string(host, "Exit err: %d\n", err);
 	return err;
 }
@@ -1548,6 +1565,8 @@ err:
 	mmc_detach_bus(host);
 
 	pr_err("%s: error %d whilst initialising SD card\n",
+		mmc_hostname(host), err);
+	ST_LOG("%s: error %d whilst initialising SD card\n",
 		mmc_hostname(host), err);
 
 	return err;

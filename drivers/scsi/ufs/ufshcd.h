@@ -83,6 +83,11 @@
 #define UFS_BIT(x)	BIT(x)
 #define UFS_MASK(x, y)	(x << ((y) % BITS_PER_LONG))
 
+#if IS_ENABLED(CONFIG_UFS_UN_20DIGITS)
+#define SERIAL_NUM_SIZE 7
+#define UFS_UN_MAX_DIGITS 20
+#endif
+
 struct ufs_hba;
 
 enum dev_cmd_type {
@@ -158,6 +163,21 @@ enum {
 	UFS_ERR_TASK_ABORT,
 	UFS_ERR_MAX,
 };
+
+#if IS_ENABLED(CONFIG_BLK_TURBO_WRITE)
+enum ufs_tw_state {
+	UFS_TW_OFF_STATE	= 0,	/* turbo write disabled state */
+	UFS_TW_ON_STATE		= 1,	/* turbo write enabled state */
+	UFS_TW_ERR_STATE	= 2,	/* turbo write error state */
+};
+
+#define ufshcd_is_tw_off(hba) ((hba)->ufs_tw_state == UFS_TW_OFF_STATE)
+#define ufshcd_is_tw_on(hba) ((hba)->ufs_tw_state == UFS_TW_ON_STATE)
+#define ufshcd_is_tw_err(hba) ((hba)->ufs_tw_state == UFS_TW_ERR_STATE)
+#define ufshcd_set_tw_off(hba) ((hba)->ufs_tw_state = UFS_TW_OFF_STATE)
+#define ufshcd_set_tw_on(hba) ((hba)->ufs_tw_state = UFS_TW_ON_STATE)
+#define ufshcd_set_tw_err(hba) ((hba)->ufs_tw_state = UFS_TW_ERR_STATE)
+#endif
 
 /*
  * UFS Power management levels.
@@ -268,6 +288,7 @@ struct ufs_desc_size {
 	int interc_desc;
 	int unit_desc;
 	int conf_desc;
+	int str_desc;
 	int hlth_desc;
 };
 
@@ -375,7 +396,9 @@ struct ufs_hba_variant_ops {
 	u32	(*get_scale_down_gear)(struct ufs_hba *hba);
 	int	(*set_bus_vote)(struct ufs_hba *hba, bool on);
 	int	(*phy_initialization)(struct ufs_hba *);
+#if IS_ENABLED(CONFIG_QCOM_WB)
 	u32	(*get_user_cap_mode)(struct ufs_hba *hba);
+#endif
 #ifdef CONFIG_DEBUG_FS
 	void	(*add_debugfs)(struct ufs_hba *hba, struct dentry *root);
 	void	(*remove_debugfs)(struct ufs_hba *hba);
@@ -748,6 +771,124 @@ struct ufshcd_cmd_log {
 	u32 seq_num;
 };
 
+#define SEC_UFS_ERROR_COUNT
+
+#if defined(SEC_UFS_ERROR_COUNT)
+struct SEC_UFS_op_count {
+	unsigned int HW_RESET_count;
+#define SEC_UFS_HW_RESET	0xff00
+	unsigned int link_startup_count;
+	unsigned int Hibern8_enter_count;
+	unsigned int Hibern8_exit_count;
+	unsigned int op_err;
+};
+
+struct SEC_UFS_UIC_cmd_count {
+	u8 DME_GET_err;
+	u8 DME_SET_err;
+	u8 DME_PEER_GET_err;
+	u8 DME_PEER_SET_err;
+	u8 DME_POWERON_err;
+	u8 DME_POWEROFF_err;
+	u8 DME_ENABLE_err;
+	u8 DME_RESET_err;
+	u8 DME_END_PT_RST_err;
+	u8 DME_LINK_STARTUP_err;
+	u8 DME_HIBER_ENTER_err;
+	u8 DME_HIBER_EXIT_err;
+	u8 DME_TEST_MODE_err;
+	unsigned int UIC_cmd_err;
+};
+
+struct SEC_UFS_UIC_err_count {
+	u8 PA_ERR_cnt;
+	u8 DL_PA_INIT_ERROR_cnt;
+	u8 DL_NAC_RECEIVED_ERROR_cnt;
+	u8 DL_TC_REPLAY_ERROR_cnt;
+	u8 NL_ERROR_cnt;
+	u8 TL_ERROR_cnt;
+	u8 DME_ERROR_cnt;
+	unsigned int UIC_err;
+};
+
+struct SEC_UFS_Fatal_err_count {
+	u8 DFE;		// Device_Fatal
+	u8 CFE;		// Controller_Fatal
+	u8 SBFE;	// System_Bus_Fatal
+	u8 CEFE;	// Crypto_Engine_Fatal
+	u8 LLE;		// Link Lost
+	unsigned int Fatal_err;
+};
+
+struct SEC_UFS_UTP_count {
+	u8 UTMR_query_task_count;
+	u8 UTMR_abort_task_count;
+	u8 UTR_read_err;
+	u8 UTR_write_err;
+	u8 UTR_sync_cache_err;
+	u8 UTR_unmap_err;
+	u8 UTR_etc_err;
+	unsigned int UTP_err;
+};
+
+struct SEC_UFS_QUERY_count {
+	u8 NOP_err;
+	u8 R_Desc_err;
+	u8 W_Desc_err;
+	u8 R_Attr_err;
+	u8 W_Attr_err;
+	u8 R_Flag_err;
+	u8 Set_Flag_err;
+	u8 Clear_Flag_err;
+	u8 Toggle_Flag_err;
+	unsigned int Query_err;
+};
+
+struct SEC_SCSI_SENSE_count {
+	unsigned int scsi_medium_err;
+	unsigned int scsi_hw_err;
+};
+
+#define SEC_MAX_LBA_LOGGING     10
+#define SEC_ERROR_REGION_STEP   (200*1024/4)    /* 200MB : 1 LBA = 4KB */
+struct SEC_SCSI_SENSE_err_log {
+	unsigned long error_LBA_list[SEC_MAX_LBA_LOGGING];
+	unsigned int error_LBA_count;
+	u64 error_region_map;
+};
+
+struct SEC_UFS_counting {
+	struct SEC_UFS_op_count op_count;
+	struct SEC_UFS_UIC_cmd_count UIC_cmd_count;
+	struct SEC_UFS_UIC_err_count UIC_err_count;
+	struct SEC_UFS_Fatal_err_count Fatal_err_count;
+	struct SEC_UFS_UTP_count UTP_count;
+	struct SEC_UFS_QUERY_count query_count;
+	struct SEC_SCSI_SENSE_count sense_count;
+	struct SEC_SCSI_SENSE_err_log sense_err_log;
+};
+#endif
+
+#if IS_ENABLED(CONFIG_BLK_TURBO_WRITE)
+struct SEC_UFS_TW_info {
+	u64 tw_state_ts;
+	u64 tw_enable_ms;
+	u64 tw_disable_ms;
+	u64 tw_amount_W_kb;
+	u64 tw_enable_count;
+	u64 tw_disable_count;
+	u64 tw_setflag_error_count;
+	u64 hibern8_amount_ms;
+	u64 hibern8_enter_count;
+	u64 hibern8_amount_ms_100ms;
+	u64 hibern8_enter_count_100ms;
+	u64 hibern8_max_ms;
+	ktime_t hibern8_enter_ts;
+	struct timespec timestamp;
+	bool tw_info_disable;
+};
+#endif
+
 /**
  * struct ufs_hba - per adapter private structure
  * @mmio_base: UFSHCI base register address
@@ -836,6 +977,9 @@ struct ufs_hba {
 
 	enum ufs_dev_pwr_mode curr_dev_pwr_mode;
 	enum uic_link_state uic_link_state;
+#if IS_ENABLED(CONFIG_BLK_TURBO_WRITE)
+	enum ufs_tw_state ufs_tw_state;
+#endif
 	/* Desired UFS power management level during runtime PM */
 	int rpm_lvl;
 	/* Desired UFS power management level during system PM */
@@ -1016,7 +1160,9 @@ struct ufs_hba {
 	/* Keeps information of the UFS device connected to this host */
 	struct ufs_dev_info dev_info;
 	bool auto_bkops_enabled;
+#if IS_ENABLED(CONFIG_QCOM_WB)
 	bool wb_buf_flush_enabled;
+#endif
 
 #ifdef CONFIG_DEBUG_FS
 	struct debugfs_files debugfs_files;
@@ -1114,7 +1260,33 @@ struct ufs_hba {
 
 	bool phy_init_g4;
 	bool force_g4;
+#if IS_ENABLED(CONFIG_QCOM_WB)
 	bool wb_enabled;
+#endif
+	char unique_number[UFS_UN_MAX_DIGITS + 1];
+	unsigned int lc_info;
+#if IS_ENABLED(CONFIG_BLK_TURBO_WRITE)
+	bool support_tw;
+	bool tw_state_not_allowed;
+	struct mutex tw_ctrl_mutex;
+	struct SEC_UFS_TW_info SEC_tw_info;
+	struct SEC_UFS_TW_info SEC_tw_info_old;
+#endif
+
+#if IS_ENABLED(CONFIG_SCSI_UFS_QCOM)
+	struct device_attribute hw_reset_info_attr;
+#endif
+
+#if defined(SEC_UFS_ERROR_COUNT)
+	struct SEC_UFS_counting SEC_err_info;
+	struct SEC_UFS_counting SEC_err_info_backup;
+#endif
+	bool UFS_fatal_mode_done;
+	struct work_struct fatal_mode_work;
+
+#if IS_ENABLED(CONFIG_UFS_DATA_LOG)
+	atomic_t	cur_log_pos;
+#endif
 
 #ifdef CONFIG_SCSI_UFS_CRYPTO
 	/* crypto */
@@ -1376,6 +1548,9 @@ static inline void ufshcd_init_req_stats(struct ufs_hba *hba)
 static inline void ufshcd_init_req_stats(struct ufs_hba *hba) {}
 #endif
 
+#define ASCII_STD true
+#define UTF16_STD false
+
 /* Expose Query-Request API */
 int ufshcd_query_descriptor_retry(struct ufs_hba *hba,
 				  enum query_opcode opcode,
@@ -1543,6 +1718,10 @@ static inline void ufshcd_vops_dbg_register_dump(struct ufs_hba *hba,
 {
 	if (hba->var && hba->var->vops && hba->var->vops->dbg_register_dump)
 		hba->var->vops->dbg_register_dump(hba, no_sleep);
+#if IS_ENABLED(CONFIG_SCSI_UFS_TEST_MODE)
+	/* do not recover system if test mode is enabled */
+	BUG_ON(1);
+#endif
 }
 
 static inline int ufshcd_vops_update_sec_cfg(struct ufs_hba *hba,
@@ -1627,10 +1806,62 @@ static inline u8 ufshcd_scsi_to_upiu_lun(unsigned int scsi_lun)
 int ufshcd_dump_regs(struct ufs_hba *hba, size_t offset, size_t len,
 		     const char *prefix);
 
+#if IS_ENABLED(CONFIG_QCOM_WB)
 static inline unsigned int ufshcd_vops_get_user_cap_mode(struct ufs_hba *hba)
 {
 	if (hba->var && hba->var->vops->get_user_cap_mode)
 		return hba->var->vops->get_user_cap_mode(hba);
 	return 0;
 }
+#endif
+
+#define SEC_UFS_DATA_ATTR_RO(name, fmt, args...)						\
+static ssize_t name##_show(struct device *dev, struct device_attribute *attr, char *buf)	\
+{												\
+	struct Scsi_Host *Shost = container_of(dev, struct Scsi_Host, shost_dev);		\
+	struct ufs_hba *hba = shost_priv(Shost);						\
+	struct SEC_UFS_counting *err_info = &(hba->SEC_err_info);				\
+	return sprintf(buf, fmt, args);								\
+}												\
+static DEVICE_ATTR_RO(name)
+
+#define SEC_UFS_DATA_SUM_ATTR_RO(name, fmt, args...)						\
+static ssize_t name##_show(struct device *dev, struct device_attribute *attr, char *buf)	\
+{												\
+	struct Scsi_Host *Shost = container_of(dev, struct Scsi_Host, shost_dev);		\
+	struct ufs_hba *hba = shost_priv(Shost);						\
+	struct SEC_UFS_counting *err_info = &(hba->SEC_err_info);				\
+	struct SEC_UFS_counting *err_info_backup = &(hba->SEC_err_info_backup);			\
+	return sprintf(buf, fmt, args);								\
+}												\
+static DEVICE_ATTR_RO(name)
+
+#define SEC_UFS_DATA_ATTR_RW(name, fmt, args...)						\
+static ssize_t name##_show(struct device *dev, struct device_attribute *attr, char *buf)	\
+{												\
+	struct Scsi_Host *Shost = container_of(dev, struct Scsi_Host, shost_dev);		\
+	struct ufs_hba *hba = shost_priv(Shost);						\
+	struct SEC_UFS_counting *err_info = &(hba->SEC_err_info);				\
+	return sprintf(buf, fmt, args);								\
+}												\
+static DEVICE_ATTR(name, 0664, name##_show, name##_store)
+
+#define SEC_UFS_ERR_INFO_BACKUP(err_count, member) ({					\
+		err_info_backup->err_count.member += err_info->err_count.member;	\
+		err_info->err_count.member = 0; })
+
+#define SEC_UFS_ERR_INFO_GET_VALUE(err_count, member)	\
+	(err_info_backup->err_count.member + err_info->err_count.member)
+
+#define SEC_UFS_ERR_COUNT_INC(count, max) ((count) += ((count) < (max)) ? 1 : 0)
+
+#define UFS_DEV_ATTR(name, fmt, args...)					\
+static ssize_t ufs_##name##_show(struct device *dev, struct device_attribute *attr, char *buf)	\
+{										\
+	struct Scsi_Host *host = container_of(dev, struct Scsi_Host, shost_dev);\
+	struct ufs_hba *hba = shost_priv(host);                                 \
+	return sprintf(buf, fmt, args);						\
+}										\
+static DEVICE_ATTR(name, 0444, ufs_##name##_show, NULL)
+
 #endif /* End of Header */

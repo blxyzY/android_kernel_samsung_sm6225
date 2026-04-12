@@ -18,6 +18,9 @@
 #include <linux/mm.h>
 #include <linux/of.h>
 #include <linux/uaccess.h>
+#if IS_ENABLED(CONFIG_SEC_PM)
+#include <clocksource/arm_arch_timer.h>
+#endif
 
 
 #define RPM_MASTERS_BUF_LEN 400
@@ -42,6 +45,15 @@
 	 prvdata->master_names[a])
 
 #define GET_FIELD(a) ((strnstr(#a, ".", 80) + 1))
+
+#if IS_ENABLED(CONFIG_SEC_PM)
+#define MAX_BUF_LEN		512
+#define MSM_ARCH_TIMER_FREQ	19200000
+#define GET_SEC(A)		((A) / (MSM_ARCH_TIMER_FREQ))
+#define GET_MSEC(A)		(((A) / (MSM_ARCH_TIMER_FREQ / 1000)) % 1000)
+
+static DEFINE_MUTEX(debug_master_stats_mutex);
+#endif /* CONFIG_SEC_PM */
 
 struct msm_rpm_master_stats_platform_data {
 	phys_addr_t phys_addr_base;
@@ -310,6 +322,79 @@ exit:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_SEC_PM)
+struct msm_rpm_master_stats_platform_data *global_pdata;
+struct msm_rpm_master_stats_private_data *global_prvdata;
+
+static int debug_masterstats_print(struct msm_rpm_master_stats_private_data *prvdata)
+{
+	struct msm_rpm_master_stats record;
+	struct msm_rpm_master_stats_platform_data *pdata = global_pdata;
+	static int master_cnt;
+	int count;
+	unsigned int duration_sec, duration_msec;
+	char *buf;
+
+	pdata = prvdata->platform_data;
+	count = RPM_MASTERS_BUF_LEN;
+	buf = prvdata->buf;
+
+	for (master_cnt = 0; master_cnt < prvdata->num_masters ; master_cnt++) {
+		if (prvdata->platform_data->version == 2) {
+			u64 accumulated;
+
+			record.xo_count =
+					readl_relaxed(prvdata->reg_base +
+					(master_cnt * pdata->master_offset +
+					offsetof(struct msm_rpm_master_stats,
+					xo_count)));
+
+			record.xo_accumulated_duration =
+					readq_relaxed(prvdata->reg_base +
+					(master_cnt * pdata->master_offset +
+					offsetof(struct msm_rpm_master_stats,
+					xo_accumulated_duration)));
+			accumulated = record.xo_accumulated_duration;
+
+			duration_sec = GET_SEC(accumulated);
+			duration_msec = GET_MSEC(accumulated);
+
+			SNPRINTF(buf, count, "%s(%d, %u.%u), ",
+					GET_MASTER_NAME(master_cnt, prvdata),
+					record.xo_count,
+					duration_sec, duration_msec);
+		}
+	}
+
+	return RPM_MASTERS_BUF_LEN - count;
+}
+
+void debug_masterstats_show(char *annotation)
+{
+	struct msm_rpm_master_stats_platform_data *pdata = global_pdata;
+	ssize_t ret;
+	char bufu[MAX_BUF_LEN] = {0, };
+	char *buf_ptr = bufu;
+
+	mutex_lock(&debug_master_stats_mutex);
+	if (!pdata) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	buf_ptr += sprintf(buf_ptr, "PM: %s: ", annotation);
+
+	global_prvdata->len = debug_masterstats_print(global_prvdata);
+
+	buf_ptr += sprintf(buf_ptr, "%s\n", global_prvdata->buf);
+	pr_info("%s", bufu);
+
+exit:
+	mutex_unlock(&debug_master_stats_mutex);
+}
+EXPORT_SYMBOL(debug_masterstats_show);
+#endif
+
 static int msm_rpm_master_stats_file_open(struct inode *inode,
 		struct file *file)
 {
@@ -460,6 +545,35 @@ static  int msm_rpm_master_stats_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, dent);
+
+#if IS_ENABLED(CONFIG_SEC_PM)
+	global_pdata = pdata;
+	
+	global_prvdata =
+		kzalloc(sizeof(struct msm_rpm_master_stats_private_data),
+			GFP_KERNEL);
+			
+	if (!global_prvdata) {
+		return -ENOMEM;
+	}
+
+	global_prvdata->reg_base = ioremap(pdata->phys_addr_base,
+						pdata->phys_size);
+	if (!global_prvdata->reg_base) {
+		kfree(global_prvdata);
+		global_prvdata = NULL;
+		pr_err("%s: ERROR could not ioremap start=%pa, len=%u\n",
+			__func__, &pdata->phys_addr_base,
+			pdata->phys_size);
+		return -EBUSY;
+	}
+
+	global_prvdata->len = 0;
+	global_prvdata->num_masters = pdata->num_masters;
+	global_prvdata->master_names = pdata->masters;
+	global_prvdata->platform_data = pdata;
+#endif
+
 	return 0;
 }
 

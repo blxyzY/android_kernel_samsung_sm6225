@@ -73,6 +73,8 @@
 #include <linux/uaccess.h>
 #include <linux/bitfield.h>
 
+#include <linux/sec_debug.h>
+
 /*
  * Apparently, some Qualcomm arm64 platforms which appear to expose their SMMU
  * global register space are still, in fact, using a hypervisor to mediate it
@@ -2026,6 +2028,58 @@ int iommu_get_fault_ids(struct iommu_domain *domain,
 }
 EXPORT_SYMBOL(iommu_get_fault_ids);
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+static const char *__arm_smmu_get_devname(struct device *dev)
+{
+	const char *token;
+	const char *delim = ":,.";
+	const char *devname;
+
+	token = dev_name(dev);
+	if (!token)
+		return "No Name";
+
+	pr_info("smmu client name - %s\n", token);
+
+	/* FIXME: the name of pci client only has delimeters and numbers */
+	if (dev_is_pci(dev))
+		return token;
+
+	while (true) {
+		devname = token;
+		token = strpbrk(token, delim);
+		if (!token)
+			break;
+		token++;        /* skip delimiter */
+	}
+
+	return devname;
+}
+
+static const char *arm_smmu_get_devname(const struct arm_smmu_domain *smmu_domain,
+		u32 sid)
+{
+	struct iommu_fwspec *fwspec = NULL;
+	struct device* dev = NULL;
+	unsigned int i;
+
+	if (smmu_domain->dev)
+		fwspec = smmu_domain->dev->iommu_fwspec;
+
+	for (i = 0; fwspec && i < fwspec->num_ids; i++) {
+		if ((fwspec->ids[i] & smmu_domain->smmu->streamid_mask) == sid) {
+			dev = smmu_domain->dev;
+			break;
+		}
+	}
+
+	if (!fwspec || !dev)
+		return "No Device";
+
+	return __arm_smmu_get_devname(dev);
+}
+#endif
+
 static irqreturn_t arm_smmu_context_fault(int irq, void *dev)
 {
 	int flags, ret, tmp;
@@ -2063,6 +2117,9 @@ static irqreturn_t arm_smmu_context_fault(int irq, void *dev)
 	if (fatal_asf && (fsr & FSR_ASF)) {
 		dev_err(smmu->dev,
 			"Took an address size fault.  Refusing to recover.\n");
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+		sec_debug_save_smmu_info_asf_fatal();
+#endif
 		BUG();
 	}
 
@@ -2134,6 +2191,15 @@ static irqreturn_t arm_smmu_context_fault(int irq, void *dev)
 		if (!non_fatal_fault) {
 			dev_err(smmu->dev,
 				"Unhandled arm-smmu context fault!\n");
+#if IS_ENABLED(CONFIG_SEC_USER_RESET_DEBUG)
+			sec_debug_save_smmu_info_fatal();
+#endif
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+			if (IS_ENABLED(CONFIG_SEC_DEBUG))
+				panic("%s SMMU Fault - SID=0x%x",
+						arm_smmu_get_devname(smmu_domain, frsynra), frsynra);
+			else
+#endif
 			BUG();
 		}
 	}

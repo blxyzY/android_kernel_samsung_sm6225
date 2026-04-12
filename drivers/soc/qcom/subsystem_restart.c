@@ -31,10 +31,13 @@
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/of_irq.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <asm/current.h>
 #include <linux/timer.h>
 
 #include "peripheral-loader.h"
+
+#include <linux/sec_debug.h>
 
 #define DISABLE_SSR 0x9889deed
 /* If set to 0x9889deed, call to subsystem_restart_dev() returns immediately */
@@ -43,6 +46,8 @@ module_param(disable_restart_work, uint, 0644);
 
 static int enable_debug;
 module_param(enable_debug, int, 0644);
+
+static bool silent_ssr;
 
 /* The maximum shutdown timeout is the product of MAX_LOOPS and DELAY_MS. */
 #define SHUTDOWN_ACK_MAX_LOOPS	100
@@ -538,7 +543,9 @@ static void notif_timeout_handler(struct timer_list *t)
 	default:
 		SSR_NOTIF_TIMEOUT_WARN(unknown_err_msg);
 	}
-
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SUMMARY)
+	sec_debug_summary_set_timeout_subsys(timeout_data->source_name, timeout_data->dest_name);
+#endif
 }
 
 static void _setup_timeout(struct subsys_desc *source_ss,
@@ -1135,6 +1142,15 @@ static void subsystem_restart_wq_func(struct work_struct *work)
 	track->p_state = SUBSYS_RESTARTING;
 	spin_unlock_irqrestore(&track->s_lock, flags);
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG)
+	if (sec_debug_is_enabled()) {
+		/* Collect ram dumps for all subsystems in order here */
+		pr_info("%s: collect ssr ramdump..\n", __func__);
+		for_each_subsys_device(list, count, NULL, subsystem_ramdump);
+		pr_info("%s: ..done\n", __func__);
+	}
+#endif
+
 	/* Collect ram dumps for all subsystems in order here */
 	for_each_subsys_device(list, count, NULL, subsystem_ramdump);
 
@@ -1212,6 +1228,9 @@ static void device_restart_work_hdlr(struct work_struct *work)
 int subsystem_restart_dev(struct subsys_device *dev)
 {
 	const char *name;
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SUMMARY)
+	int ssr_disable = 1;
+#endif
 
 	if (!get_device(&dev->dev))
 		return -ENODEV;
@@ -1225,6 +1244,48 @@ int subsystem_restart_dev(struct subsys_device *dev)
 
 	send_early_notifications(dev->early_notify);
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SUMMARY)
+	if ((sec_debug_summary_is_modem_separate_debug_ssr() ==
+				SEC_DEBUG_MODEM_SEPARATE_EN)
+			&& strcmp(name, "slpi")
+			&& strcmp(name, "adsp")
+			&& strcmp(name, "wlan")
+			&& strcmp(name, "cdsp")) {
+		pr_info("SSR separated by cp magic!!\n");
+		ssr_disable = sec_debug_is_enabled_for_ssr();
+	} else
+		pr_info("SSR by only ap debug level!!\n");
+
+	if (strcmp(name, "wlan")) {
+		if (!sec_debug_is_enabled() || (!ssr_disable))
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+		else
+			dev->restart_level = RESET_SOC;
+
+		/* force modem silent ssr */
+		if (!strncmp(name, "esoc", 4) && silent_ssr) {
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+			silent_ssr = false;
+		}
+
+		if (!strncmp(name, "modem", 5)) {
+			if (silent_ssr)  /* qrtr ioctl force silent ssr */
+				dev->restart_level = RESET_SUBSYS_COUPLED;
+			
+			qcom_smem_state_update_bits(dev->desc->state,
+					BIT(dev->desc->force_stop_bit), 0);
+			silent_ssr = 0;
+		}
+	}
+#endif
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
+	if (!strcmp(name, "slpi")) {
+		if (is_pretest()) {
+			pr_info("PreTest is running. slpi ssr!!\n");
+			dev->restart_level = RESET_SUBSYS_COUPLED;
+		}
+	}
+#endif
 	/*
 	 * If a system reboot/shutdown is underway, ignore subsystem errors.
 	 * However, print a message so that we know that a subsystem behaved
@@ -1279,6 +1340,39 @@ int subsystem_restart(const char *name)
 }
 EXPORT_SYMBOL(subsystem_restart);
 
+int subsystem_crash(const char *name)
+{
+	struct subsys_device *dev = find_subsys_device(name);
+
+	if (!dev)
+		return -ENODEV;
+
+	if (!get_device(&dev->dev))
+		return -ENODEV;
+
+	if (!subsys_get_crash_status(dev)) {
+		pr_err("%s: set force_stop_bit\n", __func__);
+		
+		qcom_smem_state_update_bits(dev->desc->state,
+				BIT(dev->desc->force_stop_bit),
+				BIT(dev->desc->force_stop_bit));
+	}
+	return 0;
+}
+EXPORT_SYMBOL(subsystem_crash);
+
+void subsys_force_stop(const char *name, bool val)
+{
+	if (strncmp(name, "modem", 5)) {
+		pr_err("only modem ssr supported %s: %d\n", name, val);
+		return;
+	}
+	silent_ssr = val;
+	pr_err("silent_ssr %s: %d\n", name, silent_ssr);
+	subsystem_crash(name);
+}
+EXPORT_SYMBOL(subsys_force_stop);
+
 int subsystem_crashed(const char *name)
 {
 	struct subsys_device *dev = find_subsys_device(name);
@@ -1305,6 +1399,36 @@ int subsystem_crashed(const char *name)
 	return 0;
 }
 EXPORT_SYMBOL(subsystem_crashed);
+
+#ifdef CONFIG_SEC_PCIE
+bool is_subsystem_crash(const char *name)
+{
+	struct subsys_device *dev = find_subsys_device(name);
+
+	if (!dev)
+		return false;
+
+	return subsys_get_crash_status(dev) ? true : false;
+}
+EXPORT_SYMBOL(is_subsystem_crash);
+
+int is_subsystem_online(const char *name)
+{
+	struct subsys_device *dev = find_subsys_device(name);
+
+	if (!dev)
+		return false;
+
+	return dev->count;
+}
+EXPORT_SYMBOL(is_subsystem_online);
+#endif
+
+void subsys_set_modem_silent_ssr(bool value)
+{
+	silent_ssr = value;
+}
+EXPORT_SYMBOL(subsys_set_modem_silent_ssr);
 
 void subsys_set_crash_status(struct subsys_device *dev,
 				enum crash_status crashed)
@@ -1656,6 +1780,22 @@ static int subsys_parse_devicetree(struct subsys_desc *desc)
 		ret = platform_get_irq(pdev, 0);
 		if (ret > 0)
 			desc->generic_irq = ret;
+	}
+
+	if (!strncmp(desc->name, "adsp", 4)) {
+		desc->sensor_1p8_en = of_get_named_gpio(pdev->dev.of_node,
+						"qcom,sensor-1p8-en", 0);
+		if (gpio_is_valid(desc->sensor_1p8_en)) {
+			ret = gpio_request(desc->sensor_1p8_en,
+				"sensor-1p8-en");
+
+			if (ret < 0)
+				pr_err("%s, %s gpio_request failed\n",
+					__func__, desc->name);
+		} else {
+			pr_err("%s, %s get sensor_1p8_en failed (%d)\n",
+			__func__, desc->name, desc->sensor_1p8_en);
+		}
 	}
 
 	desc->ignore_ssr_failure = of_property_read_bool(pdev->dev.of_node,

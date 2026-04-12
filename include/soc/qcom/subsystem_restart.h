@@ -123,6 +123,7 @@ struct subsys_desc {
 #ifdef CONFIG_SETUP_SSR_NOTIF_TIMEOUTS
 	struct subsys_notif_timeout timeout_data;
 #endif /* CONFIG_SETUP_SSR_NOTIF_TIMEOUTS */
+	int sensor_1p8_en;
 };
 
 /**
@@ -147,6 +148,8 @@ struct notif_data {
 extern int subsys_get_restart_level(struct subsys_device *dev);
 extern int subsystem_restart_dev(struct subsys_device *dev);
 extern int subsystem_restart(const char *name);
+extern int subsystem_crash(const char *name);
+extern void subsys_force_stop(const char *name, bool val);
 extern int subsystem_crashed(const char *name);
 
 extern void *subsystem_get(const char *name);
@@ -184,7 +187,8 @@ static inline int subsystem_restart(const char *name)
 {
 	return 0;
 }
-
+static inline int subsystem_crash(const char *name) { }
+static inline void subsys_force_stop(const char *name, bool val) { }
 static inline int subsystem_crashed(const char *name)
 {
 	return 0;

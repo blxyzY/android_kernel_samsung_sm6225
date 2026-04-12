@@ -634,6 +634,11 @@ struct mmc_host {
 	bool crash_on_err;	/* crash the system on error */
 	bool need_hw_reset;
 	atomic_t active_reqs;
+	unsigned int		card_detect_cnt;
+#if IS_ENABLED(CONFIG_SEC_ABC)
+	unsigned int		card_removed_cnt;
+#endif
+	int (*sdcard_uevent)(struct mmc_card *card);
 	unsigned long		private[0] ____cacheline_aligned;
 };
 

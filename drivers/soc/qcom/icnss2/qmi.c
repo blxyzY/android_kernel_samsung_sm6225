@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "icnss2_qmi: " fmt
@@ -731,11 +730,31 @@ static int icnss_get_bdf_file_name(struct icnss_priv *priv,
 	switch (bdf_type) {
 	case ICNSS_BDF_ELF:
 		if (priv->board_id == 0xFF)
+#ifdef CONFIG_SEC_SS_CNSS_FEATURE_SYSFS
+			if (ant_from_macloader == 1 || ant_from_macloader == 2 || ant_from_macloader == 10) { // 10: for GTX disabled bdf
+				snprintf(filename_tmp, filename_len, ELF_BDF_FILE_NAME "%d",
+					ant_from_macloader);
+			}
+			else
+				snprintf(filename_tmp, filename_len, ELF_BDF_FILE_NAME);
+#else /* !CONFIG_SEC_SS_CNSS_FEATURE_SYSFS */
 			snprintf(filename, filename_len, ELF_BDF_FILE_NAME);
+#endif /* CONFIG_SEC_SS_CNSS_FEATURE_SYSFS */
 		else if (priv->board_id < 0xFF)
+#ifdef CONFIG_SEC_SS_CNSS_FEATURE_SYSFS
+			if (ant_from_macloader == 1 || ant_from_macloader == 2 || ant_from_macloader == 10) { // 10: for GTX disabled bdf
+				snprintf(filename_tmp, filename_len,
+					 ELF_BDF_FILE_NAME_PREFIX "%02x%d",
+					 priv->board_id, ant_from_macloader);
+			} else
+				snprintf(filename_tmp, filename_len,
+					 ELF_BDF_FILE_NAME_PREFIX "%02x",
+					 priv->board_id);
+#else /* !CONFIG_SEC_SS_CNSS_FEATURE_SYSFS */
 			snprintf(filename, filename_len,
 				 ELF_BDF_FILE_NAME_PREFIX "%02x",
 				 priv->board_id);
+#endif /* CONFIG_SEC_SS_CNSS_FEATURE_SYSFS */
 		else
 			snprintf(filename, filename_len,
 				 BDF_FILE_NAME_PREFIX "%02x.e%02x",
@@ -969,11 +988,11 @@ int icnss_wlfw_qdss_data_send_sync(struct icnss_priv *priv, char *file_name,
 			     __func__, resp->total_size, resp->data_len);
 
 		if ((resp->total_size_valid == 1 &&
-		     resp->total_size == total_size)
-		    && (resp->seg_id_valid == 1 && resp->seg_id == req->seg_id)
-		    && (resp->data_valid == 1 &&
-			resp->data_len <= QMI_WLFW_MAX_DATA_SIZE_V01)
-		    && resp->data_len <= remaining) {
+		    resp->total_size == total_size)
+		   && (resp->seg_id_valid == 1 && resp->seg_id == req->seg_id)
+		   && (resp->data_valid == 1 &&
+		resp->data_len <= QMI_WLFW_MAX_DATA_SIZE_V01)) {
+
 			memcpy(p_qdss_trace_data_temp,
 			       resp->data, resp->data_len);
 		} else {

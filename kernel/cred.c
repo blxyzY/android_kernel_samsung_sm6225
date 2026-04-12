@@ -329,6 +329,15 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 	struct cred *new;
 	int ret;
 
+	/*
+	 * Disabling cred sharing among the same thread group. This
+	 * is needed because we only added one back pointer in cred.
+	 *
+	 * This should NOT in any way change kernel logic, if we think about what
+	 * happens when a thread needs to change its credentials: it will just
+	 * create a new one, while all other threads in the same thread group still
+	 * reference the old one, whose reference counter decreases by 2.
+	 */
 	if (
 #ifdef CONFIG_KEYS
 		!p->cred->thread_keyring &&
@@ -378,6 +387,7 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 	p->cred = p->real_cred = get_cred(new);
 	alter_cred_subscribers(new, 2);
 	validate_creds(new);
+
 	return 0;
 
 error_put:
@@ -477,8 +487,10 @@ int commit_creds(struct cred *new)
 	alter_cred_subscribers(new, 2);
 	if (new->user != old->user)
 		atomic_inc(&new->user->processes);
+
 	rcu_assign_pointer(task->real_cred, new);
 	rcu_assign_pointer(task->cred, new);
+
 	if (new->user != old->user)
 		atomic_dec(&old->user->processes);
 	alter_cred_subscribers(old, -2);
@@ -556,6 +568,7 @@ const struct cred *override_creds(const struct cred *new)
 	get_new_cred((struct cred *)new);
 	alter_cred_subscribers(new, 1);
 	rcu_assign_pointer(current->cred, new);
+
 	alter_cred_subscribers(old, -1);
 
 	kdebug("override_creds() = %p{%d,%d}", old,

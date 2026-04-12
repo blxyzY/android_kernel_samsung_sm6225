@@ -10,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/clk.h>
+#include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
@@ -26,7 +27,9 @@
 #include <linux/soc/qcom/smem_state.h>
 
 #include "peripheral-loader.h"
-
+#ifdef CONFIG_SENSORS_SSC
+#include <linux/adsp/ssc_ssr_reason.h>
+#endif
 #define XO_FREQ			19200000
 #define PROXY_TIMEOUT_MS	10000
 #define MAX_SSR_REASON_LEN	256U
@@ -697,6 +700,14 @@ static int pil_auth_and_reset(struct pil_desc *pil)
 	if (rc)
 		return rc;
 
+	if (gpio_is_valid(d->subsys_desc.sensor_1p8_en) && !strncmp(d->subsys_desc.name, "adsp", 4)) {
+		gpio_direction_output(d->subsys_desc.sensor_1p8_en, 1);
+
+		pr_info("%s, %s sensor_1p8_en(%d) value(%d)\n",
+			__func__, d->subsys_desc.name, d->subsys_desc.sensor_1p8_en,
+			gpio_get_value_cansleep(d->subsys_desc.sensor_1p8_en));
+	}
+
 	rc = prepare_enable_clocks(pil->dev, d->clks, d->clk_count);
 	if (rc)
 		goto err_clks;
@@ -714,6 +725,14 @@ err_reset:
 	disable_unprepare_clocks(d->clks, d->clk_count);
 err_clks:
 	disable_regulators(d, d->regs, d->reg_count, false);
+
+	if (gpio_is_valid(d->subsys_desc.sensor_1p8_en) && !strncmp(d->subsys_desc.name, "adsp", 4)) {
+		gpio_direction_output(d->subsys_desc.sensor_1p8_en, 0);
+
+		pr_err("%s, %s err_clks: sensor_1p8_en(%d) value(%d)\n",
+			__func__, d->subsys_desc.name, d->subsys_desc.sensor_1p8_en,
+			gpio_get_value_cansleep(d->subsys_desc.sensor_1p8_en));
+	}
 
 	return rc;
 }
@@ -759,6 +778,14 @@ static int pil_shutdown_trusted(struct pil_desc *pil)
 
 	disable_unprepare_clocks(d->clks, d->clk_count);
 	disable_regulators(d, d->regs, d->reg_count, false);
+
+	if (gpio_is_valid(d->subsys_desc.sensor_1p8_en) && !strncmp(d->subsys_desc.name, "adsp", 4)) {
+		gpio_direction_output(d->subsys_desc.sensor_1p8_en, 0);
+
+		pr_err("%s, %s sensor_1p8_en(%d) value(%d)\n",
+			__func__, d->subsys_desc.name, d->subsys_desc.sensor_1p8_en,
+			gpio_get_value_cansleep(d->subsys_desc.sensor_1p8_en));
+	}
 
 	return scm_ret;
 
@@ -824,6 +851,11 @@ static void log_failure_reason(const struct pil_tz_data *d)
 
 	strlcpy(reason, smem_reason, min(size, (size_t)MAX_SSR_REASON_LEN));
 	pr_err("%s subsystem failure reason: %s.\n", name, reason);
+
+#ifdef CONFIG_SENSORS_SSC
+	if (!strncmp(name, "adsp", 4))
+		ssr_reason_call_back(reason, min(size, (size_t)MAX_SSR_REASON_LEN));
+#endif
 }
 
 static int subsys_shutdown(const struct subsys_desc *subsys, bool force_stop)
@@ -888,7 +920,12 @@ static void subsys_crash_shutdown(const struct subsys_desc *subsys)
 		qcom_smem_state_update_bits(subsys->state,
 			BIT(subsys->force_stop_bit),
 			BIT(subsys->force_stop_bit));
-		mdelay(CRASH_STOP_ACK_TO_MS);
+#if defined(CONFIG_SEC_DEBUG)
+		if (likely(!in_atomic()))
+			msleep(CRASH_STOP_ACK_TO_MS);
+		else
+#endif
+			mdelay(CRASH_STOP_ACK_TO_MS);
 	}
 }
 

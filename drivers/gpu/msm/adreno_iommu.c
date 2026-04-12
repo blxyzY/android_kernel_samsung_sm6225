@@ -458,7 +458,6 @@ int adreno_iommu_set_pt_ctx(struct adreno_ringbuffer *rb,
 		if (new_pt != cur_pt)
 			count += adreno_iommu_set_pt_generate_cmds(rb,
 					cmds, new_pt);
-
 	}
 
 	/* Add commands to set the current context in memstore */

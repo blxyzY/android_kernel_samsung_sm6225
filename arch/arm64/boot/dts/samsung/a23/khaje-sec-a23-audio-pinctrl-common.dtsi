@@ -1,0 +1,48 @@
+/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&tlmm {
+	wcd937x_reset_active: wcd937x_reset_active {
+		mux {
+			pins = "gpio106";
+		};
+
+		config {
+			pins = "gpio106";
+		};
+	};
+
+	wcd937x_reset_sleep: wcd937x_reset_sleep {
+		mux {
+			pins = "gpio106";
+		};
+		config {
+			pins = "gpio106";
+		};
+	};
+
+	tas25xx_gpio_default: tas25xx_gpio_default {
+		mux {
+			pins = "gpio36", "gpio65", "gpio66";
+			function = "gpio";
+		};
+		config {
+			pins = "gpio36", "gpio65", "gpio66";
+			bias-disable; /* No PULL */
+		};
+	};
+};
+
+&lpi_tlmm {
+
+};
+

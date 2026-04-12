@@ -40,6 +40,13 @@
 #include "pinctrl-msm.h"
 #include "../pinctrl-utils.h"
 
+#if IS_ENABLED(CONFIG_SEC_PM)
+#include <linux/sec-pinmux.h>
+#if IS_ENABLED(CONFIG_SEC_GPIO_DVS)
+#include <linux/secgpio_dvs.h>
+#endif /* CONFIG_SEC_GPIO_DVS */
+#endif /* CONFIG_SEC_PM */
+
 #define MAX_NR_GPIO 300
 #define PS_HOLD_OFFSET 0x820
 #define QUP_MASK       GENMASK(5, 0)
@@ -81,6 +88,10 @@ struct msm_pinctrl {
 };
 
 static struct msm_pinctrl *msm_pinctrl_data;
+#if IS_ENABLED(CONFIG_SEC_PM)
+static int total_pin_count = 0;
+static int msm_gpio_chip_base = 0;
+#endif /* CONFIG_SEC_PM */
 
 static int msm_get_groups_count(struct pinctrl_dev *pctldev)
 {
@@ -508,8 +519,132 @@ static void msm_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 	raw_spin_unlock_irqrestore(&pctrl->lock, flags);
 }
 
+#if IS_ENABLED(CONFIG_SEC_PM)
+int get_msm_gpio_chip_base(void)
+{
+	return msm_gpio_chip_base;
+}
+
+int msm_set_gpio_status(struct gpio_chip *chip, uint pin_no, uint id, bool level)
+{
+	const struct msm_pingroup *g;
+	struct msm_pinctrl *pctrl = gpiochip_get_data(chip);
+	unsigned long flags;
+	u32 cfg_val, inout_val;
+	u32 mask = 0, shft = 0, data;
+
+	if (!gpiochip_line_is_valid(chip, pin_no))
+		return 0;
+
+	g = &pctrl->soc->groups[pin_no];
+
+	raw_spin_lock_irqsave(&pctrl->lock, flags);
+	inout_val = readl(pctrl->regs + g->io_reg);
+	cfg_val = readl(pctrl->regs + g->ctl_reg);
+
+	/* Get mask and shft values for this config type */
+	switch (id) {
+	case GPIO_DVS_CFG_PULL_DOWN:
+		mask = GPIOMUX_PULL_MASK;
+		shft = GPIOMUX_PULL_SHFT;
+		data = GPIOMUX_PULL_DOWN;
+		break;
+	case GPIO_DVS_CFG_PULL_UP:
+		mask = GPIOMUX_PULL_MASK;
+		shft = GPIOMUX_PULL_SHFT;
+		data = GPIOMUX_PULL_UP;
+		break;
+	case GPIO_DVS_CFG_PULL_NONE:
+		mask = GPIOMUX_PULL_MASK;
+		shft = GPIOMUX_PULL_SHFT;
+		data = GPIOMUX_PULL_NONE;
+		break;
+	case GPIO_DVS_CFG_OUTPUT:
+		mask = GPIOMUX_DIR_MASK;
+		shft = GPIOMUX_DIR_SHFT;
+		data = level;
+		inout_val = dir_to_inout_val(data);
+		writel(inout_val, pctrl->regs + g->io_reg);
+		data = mask;
+		break;
+	default:
+		return -EINVAL;
+	};
+
+	cfg_val &= ~(mask << shft);
+	cfg_val |= (data << shft);
+	writel(cfg_val, pctrl->regs + g->ctl_reg);
+	raw_spin_unlock_irqrestore(&pctrl->lock, flags);
+
+	return 0;
+}
+
+void msm_gp_get_cfg(struct gpio_chip *chip, uint pin_no, struct gpiomux_setting *val)
+{
+	const struct msm_pingroup *g;
+	struct msm_pinctrl *pctrl = gpiochip_get_data(chip);
+	unsigned long flags;
+	u32 cfg_val, inout_val;
+
+	g = &pctrl->soc->groups[pin_no];
+
+	if (!gpiochip_line_is_valid(chip, pin_no))
+		return;
+
+	raw_spin_lock_irqsave(&pctrl->lock, flags);
+	inout_val = readl(pctrl->regs + g->io_reg);
+	cfg_val = readl(pctrl->regs + g->ctl_reg);
+
+	val->pull = cfg_val & 0x3;
+	val->func = (cfg_val >> 2) & 0xf;
+	val->drv = (cfg_val >> 6) & 0x7;
+	val->dir = cfg_val & BIT_MASK(9) ? 1 : GPIOMUX_IN;
+
+	if ((val->func == GPIOMUX_FUNC_GPIO) && !!(val->dir))
+		val->dir = inout_val & BIT_MASK(1) ?
+		GPIOMUX_OUT_HIGH : GPIOMUX_OUT_LOW;
+	raw_spin_unlock_irqrestore(&pctrl->lock, flags);
+}
+
+int msm_gp_get_value(struct gpio_chip *chip, uint pin_no, int in_out_type)
+{
+	const struct msm_pingroup *g;
+	struct msm_pinctrl *pctrl = gpiochip_get_data(chip);
+	unsigned long flags;
+	u32 inout_val;
+
+	g = &pctrl->soc->groups[pin_no];
+
+	if (!gpiochip_line_is_valid(chip, pin_no))
+		return 0;
+
+	raw_spin_lock_irqsave(&pctrl->lock, flags);
+	inout_val = readl(pctrl->regs + g->io_reg);
+	raw_spin_unlock_irqrestore(&pctrl->lock, flags);
+
+	if (in_out_type == GPIOMUX_IN)
+		return (inout_val & BIT(GPIO_IN_BIT)) >> GPIO_IN_BIT;
+	else
+		return (inout_val & BIT(GPIO_OUT_BIT)) >> GPIO_OUT_BIT;
+
+	return 0;
+}
+#endif /* CONFIG_SEC_PM */
+
 #ifdef CONFIG_DEBUG_FS
 #include <linux/seq_file.h>
+static void inline __msm_gpio_dbg_show_one_wakeup(struct seq_file *s,
+	unsigned offset)
+{
+	enum msm_gpio_wake type = msm_gpio_mpm_wake_get(offset);
+	const char *wakeup[] = {
+	[MSM_GPIO_WAKE_NONE] = "none",
+	[MSM_GPIO_WAKE_DISABLED] = "disabled",
+	[MSM_GPIO_WAKE_ENABLED] = "enabled",
+	};
+
+	seq_printf(s, " wakeup-%s", wakeup[type]);
+}
 
 static void msm_gpio_dbg_show_one(struct seq_file *s,
 				  struct pinctrl_dev *pctldev,
@@ -563,6 +698,7 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 		seq_printf(s, " %s", pulls_no_keeper[pull]);
 	else
 		seq_printf(s, " %s", pulls_keeper[pull]);
+	__msm_gpio_dbg_show_one_wakeup(s, offset);
 	seq_puts(s, "\n");
 }
 
@@ -1401,7 +1537,9 @@ static int msm_gpio_init(struct msm_pinctrl *pctrl)
 
 	gpiochip_set_chained_irqchip(chip, &pctrl->irq_chip, pctrl->irq,
 				     msm_gpio_irq_handler);
-
+#if IS_ENABLED(CONFIG_SEC_PM)
+	msm_gpio_chip_base = chip->base;
+#endif /* CONFIG_SEC_PM */
 	return 0;
 fail:
 	gpiochip_remove(&pctrl->chip);
@@ -1554,6 +1692,50 @@ int msm_gpio_mpm_wake_set(unsigned int gpio, bool enable)
 }
 EXPORT_SYMBOL(msm_gpio_mpm_wake_set);
 
+/* msm_gpio_mpm_wake_get - API to get interrupt wakeup capable
+* @gpio:       Gpio number to get interrupt wakeup capable
+*/
+enum msm_gpio_wake msm_gpio_mpm_wake_get(unsigned int gpio)
+{
+   const struct msm_pingroup *g;
+   unsigned long flags;
+   u32 val;
+
+   g = &msm_pinctrl_data->soc->groups[gpio];
+   if (g->wake_bit == -1)
+	   return MSM_GPIO_WAKE_NONE;
+
+   raw_spin_lock_irqsave(&msm_pinctrl_data->lock, flags);
+   val = readl_relaxed(msm_pinctrl_data->regs + g->wake_reg);
+   val &= BIT(g->wake_bit);
+   raw_spin_unlock_irqrestore(&msm_pinctrl_data->lock, flags);
+
+   return val ? MSM_GPIO_WAKE_ENABLED : MSM_GPIO_WAKE_DISABLED;
+}
+EXPORT_SYMBOL(msm_gpio_mpm_wake_get);
+
+static void __msm_gpio_parse_dt_disable_wakeup(struct msm_pinctrl *pctrl)
+{
+   const struct device_node *np = pctrl->dev->of_node;
+   int nr_gpios;
+   unsigned int gpio;
+   int i;
+   int err;
+
+   nr_gpios = of_property_count_u32_elems(np, "wakeup-disabled-gpios");
+   if (nr_gpios <= 0)
+	   return;
+
+   for (i = 0; i < nr_gpios; i++) {
+	   of_property_read_u32_index(np, "wakeup-disabled-gpios",
+			   i, &gpio);
+	   err = msm_gpio_mpm_wake_set(gpio, false);
+	   if (err)
+		   pr_warn("can't disable 'wakeup' for gpio-%d (%d)\n",
+				   gpio, err);
+   }
+}
+
 int msm_pinctrl_probe(struct platform_device *pdev,
 		      const struct msm_pinctrl_soc_data *soc_data)
 {
@@ -1593,6 +1775,9 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 	pctrl->desc.name = dev_name(&pdev->dev);
 	pctrl->desc.pins = pctrl->soc->pins;
 	pctrl->desc.npins = pctrl->soc->npins;
+#if IS_ENABLED(CONFIG_SEC_PM)
+	total_pin_count = pctrl->desc.npins;
+#endif /* CONFIG_SEC_PM */
 
 	pctrl->pctrl = devm_pinctrl_register(&pdev->dev, &pctrl->desc, pctrl);
 	if (IS_ERR(pctrl->pctrl)) {
@@ -1620,6 +1805,7 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 
 	register_syscore_ops(&msm_pinctrl_pm_ops);
 	dev_dbg(&pdev->dev, "Probed Qualcomm pinctrl driver\n");
+	__msm_gpio_parse_dt_disable_wakeup(pctrl);
 
 	return 0;
 }

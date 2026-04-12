@@ -21,29 +21,95 @@
 
 #include "slot-gpio.h"
 
+#ifdef CONFIG_MMC_SUPPORT_STLOG
+#include <linux/fslog.h>
+#else
+#define ST_LOG(fmt, ...)
+#endif
+
 struct mmc_gpio {
 	struct gpio_desc *ro_gpio;
 	struct gpio_desc *cd_gpio;
 	bool override_ro_active_level;
 	bool override_cd_active_level;
+	bool status;
 	irqreturn_t (*cd_gpio_isr)(int irq, void *dev_id);
 	char *ro_label;
 	u32 cd_debounce_delay_ms;
 	char cd_label[];
 };
 
+#ifdef CONFIG_SEC_A23_PROJECT
+#include <linux/regmap.h>
+#include <linux/delay.h>
+
+extern struct regmap *g_wcd937x_regmap;
+static void wcd937x_wa_work_func(struct work_struct *work);
+static DECLARE_DELAYED_WORK(wcd937x_wa_work, wcd937x_wa_work_func);
+static void wcd937x_wa_work_func(struct work_struct *work)
+{
+	int val = 0, start_reg = 0x3001, end_reg = 0x34CF, i;
+
+	pr_debug("+++ %s +++\n", __func__);
+
+	//read from 0x3001 to 0x34CF
+	for (i = start_reg ; i <= end_reg; i++)
+		regmap_read(g_wcd937x_regmap, i, &val);
+
+	//toggle 0x3471
+	regmap_write(g_wcd937x_regmap, 0x3471, 0x10);
+	regmap_read(g_wcd937x_regmap, 0x3471, &val);
+	if (val == 0x10) {
+		regmap_write(g_wcd937x_regmap, 0x3471, 0x00);
+		regmap_read(g_wcd937x_regmap, 0x3471, &val);
+	}
+}
+#endif /* CONFIG_SEC_A23_PROJECT */
+
 static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
 	struct mmc_host *host = dev_id;
 	struct mmc_gpio *ctx = host->slot.handler_priv;
-	int present = host->ops->get_cd(host);
+	int present;
+	bool status;
 
+	present = host->ops->get_cd(host);
 	pr_debug("%s: cd gpio irq, gpio state %d (CARD_%s)\n",
 		mmc_hostname(host), present, present?"INSERT":"REMOVAL");
 
-	host->trigger_card_event = true;
-	mmc_detect_change(host, msecs_to_jiffies(ctx->cd_debounce_delay_ms));
+	status = mmc_gpio_get_cd(host) ? true : false;
+
+	if (status ^ ctx->status) {
+		pr_err("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+				mmc_hostname(host), ctx->status, status,
+				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
+				"HIGH" : "LOW");
+		ST_LOG("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+				mmc_hostname(host), ctx->status, status,
+				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
+				"HIGH" : "LOW");
+
+		ctx->status = status;
+
+		host->trigger_card_event = true;
+
+		if (host->card_detect_cnt < 0x7FFFFFFF)
+			host->card_detect_cnt++;
+#if IS_ENABLED(CONFIG_SEC_FACTORY)
+		if (status)
+			mmc_detect_change(host, msecs_to_jiffies(ctx->cd_debounce_delay_ms));
+		else
+			mmc_detect_change(host, 0);
+#else
+		mmc_detect_change(host, msecs_to_jiffies(ctx->cd_debounce_delay_ms));
+#endif
+	}
+
+#ifdef CONFIG_SEC_A23_PROJECT
+	if (g_wcd937x_regmap)
+		schedule_delayed_work(&wcd937x_wa_work, msecs_to_jiffies(500));
+#endif /* CONFIG_SEC_A23_PROJECT */
 
 	return IRQ_HANDLED;
 }
@@ -157,6 +223,13 @@ void mmc_gpiod_request_cd_irq(struct mmc_host *host)
 	if (!(host->caps & MMC_CAP_NEEDS_POLL))
 		irq = gpiod_to_irq(ctx->cd_gpio);
 
+	ret = mmc_gpio_get_cd(host);
+	if (ret < 0) {
+		pr_err("%s: getting card detection gpio is failed.\n", mmc_hostname(host));
+		return;
+	}
+	ctx->status = ret ? true : false;
+
 	if (irq >= 0) {
 		if (!ctx->cd_gpio_isr)
 			ctx->cd_gpio_isr = mmc_gpio_cd_irqt;
@@ -173,7 +246,7 @@ void mmc_gpiod_request_cd_irq(struct mmc_host *host)
 
 	if (irq < 0)
 		host->caps |= MMC_CAP_NEEDS_POLL;
-	ret = mmc_gpio_set_cd_wake(host, true);
+	ret = mmc_gpio_set_cd_wake(host, false);
 	if (ret)
 		dev_err(mmc_dev(host), "%s: enabling cd irq wake failed ret=%d\n",
 				      __func__, ret);
@@ -185,9 +258,25 @@ static int mmc_card_detect_notifier(struct notifier_block *nb,
 {
 	struct mmc_host *host = container_of(nb, struct mmc_host,
 					     card_detect_nb);
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+	bool status;
 
-	host->trigger_card_event = true;
-	mmc_detect_change(host, 0);
+	status = mmc_gpio_get_cd(host) ? true : false;
+
+	if (status ^ ctx->status) {
+		pr_err("%s: extcon : slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+				mmc_hostname(host), ctx->status, status,
+				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
+				"HIGH" : "LOW");
+		ctx->status = status;
+
+		host->trigger_card_event = true;
+
+		if (host->card_detect_cnt < 0x7FFFFFFF)
+			host->card_detect_cnt++;
+
+		mmc_detect_change(host, 0);
+	}
 
 	return NOTIFY_DONE;
 }
@@ -196,6 +285,7 @@ void mmc_register_extcon(struct mmc_host *host)
 {
 	struct extcon_dev *extcon = host->extcon;
 	int err;
+	struct mmc_gpio *ctx = host->slot.handler_priv;
 
 	if (!extcon)
 		return;
@@ -207,7 +297,16 @@ void mmc_register_extcon(struct mmc_host *host)
 		dev_err(mmc_dev(host), "%s: extcon_register_notifier() failed ret=%d\n",
 			__func__, err);
 		host->caps |= MMC_CAP_NEEDS_POLL;
+		return;
 	}
+
+	err = mmc_gpio_get_cd(host);
+	if (err < 0) {
+		pr_err("%s: getting card detection extcon is failed.\n", mmc_hostname(host));
+		return;
+	}
+	ctx->status = err ? true : false;
+
 }
 EXPORT_SYMBOL(mmc_register_extcon);
 
@@ -227,6 +326,25 @@ void mmc_unregister_extcon(struct mmc_host *host)
 }
 EXPORT_SYMBOL(mmc_unregister_extcon);
 
+/**
+ * mmc_gpiod_update_status - update ctx->status to current status
+ * @host: mmc_host
+ * @present: current status from get_cd()
+ *
+ * It is to update card detection status.
+ */
+void mmc_gpiod_update_status(struct mmc_host *host, int present)
+{
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+	bool ctx_status;
+
+	if (present < 0)
+		return;
+
+	ctx_status = !!present;
+	if (ctx && (ctx->status ^ ctx_status))
+		ctx->status = ctx_status;
+}
 
 int mmc_gpio_set_cd_wake(struct mmc_host *host, bool on)
 {

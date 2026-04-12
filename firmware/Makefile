@@ -3,12 +3,21 @@
 # kbuild file for firmware/
 #
 
+CONFIG_EXTRA_FIRMWARE_DIR="firmware"
+
 # Create $(fwabs) from $(CONFIG_EXTRA_FIRMWARE_DIR) -- if it doesn't have a
 # leading /, it's relative to $(srctree).
 fwdir := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE_DIR))
 fwabs := $(addprefix $(srctree)/,$(filter-out /%,$(fwdir)))$(filter /%,$(fwdir))
 
 fw-external-y := $(subst $(quote),,$(CONFIG_EXTRA_FIRMWARE))
+
+ifdef CONFIG_SEC_A23_PROJECT
+fw-external-$(CONFIG_TOUCHSCREEN_FTS_FT8720) += tsp_focaltech/ft8720_a23.bin tsp_focaltech/ft8720_a23_ramtest.bin
+fw-external-$(CONFIG_TOUCHSCREEN_NOVATEK_NT36523_SPI) += tsp_novatek/nt36672_a23_csot.bin tsp_novatek/nt36672_a23_sharp.bin \
+						tsp_novatek/nt36672_a23_csot_mp.bin tsp_novatek/nt36672_a23_sharp_mp.bin
+fw-external-$(CONFIG_TOUCHSCREEN_ILITEK_ILI9881X_SPI) += tsp_ilitek/ili7807_a23.hex
+endif
 
 quiet_cmd_fwbin = MK_FW   $@
       cmd_fwbin = FWNAME="$(patsubst firmware/%.gen.S,%,$@)";		     \
@@ -42,8 +51,7 @@ wordsize_deps := $(wildcard include/config/64bit.h include/config/32bit.h \
 		include/config/x86_32.h include/config/x86_64.h \
 		firmware/Makefile)
 
-$(patsubst %,$(obj)/%.gen.S, $(fw-external-y)): %: $(wordsize_deps) \
-		include/config/extra/firmware/dir.h
+$(patsubst %,$(obj)/%.gen.S, $(fw-external-y)): %: $(wordsize_deps)
 	$(call cmd,fwbin,$(fwabs)/$(patsubst $(obj)/%.gen.S,%,$@))
 
 # The .o files depend on the binaries directly; the .S files don't.

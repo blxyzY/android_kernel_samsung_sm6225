@@ -38,6 +38,9 @@
 
 #include "peripheral-loader.h"
 
+#include <linux/sec_debug.h>
+#include <soc/qcom/watchdog.h>
+
 #define pil_err(desc, fmt, ...)						\
 	dev_err(desc->dev, "%s: " fmt, desc->name, ##__VA_ARGS__)
 #define pil_info(desc, fmt, ...)					\
@@ -1231,10 +1234,20 @@ int pil_boot(struct pil_desc *desc)
 	struct pil_priv *priv = desc->priv;
 	bool mem_protect = false;
 	bool hyp_assign = false;
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+	bool secure_check_fail = false;
+#endif
 
 	ret = pil_notify_aop(desc, "on");
 	if (ret < 0) {
 		pil_err(desc, "Failed to send ON message to AOP rc:%d\n", ret);
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+		if (ret == -ETIME) {
+			smp_send_stop();
+			msm_trigger_wdog_bite();
+		}
+#endif
+
 		return ret;
 	}
 
@@ -1296,6 +1309,9 @@ int pil_boot(struct pil_desc *desc)
 				priv->region_start, priv->region);
 	if (ret) {
 		pil_err(desc, "Initializing image failed(rc:%d)\n", ret);
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+		secure_check_fail = true;
+#endif
 		goto err_boot;
 	}
 
@@ -1370,12 +1386,21 @@ int pil_boot(struct pil_desc *desc)
 	ret = desc->ops->auth_and_reset(desc);
 	if (ret) {
 		pil_err(desc, "Failed to bring out of reset(rc:%d)\n", ret);
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+		secure_check_fail = true;
+#endif
 		goto err_auth_and_reset;
 	}
 	pil_log("reset_done", desc);
 	pil_info(desc, "Brought out of reset\n");
 	desc->modem_ssr = false;
 err_auth_and_reset:
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+	if (IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK) &&
+			secure_check_fail && (ret == -EINVAL) &&
+			(!strcmp(desc->name, "mba") || !strcmp(desc->name, "modem")))
+		sec_peripheral_secure_check_fail();
+#endif
 	if (ret && desc->subsys_vmid > 0) {
 		pil_assign_mem_to_linux(desc, priv->region_start,
 				(priv->region_end - priv->region_start));
@@ -1410,6 +1435,12 @@ out:
 		}
 		pil_release_mmap(desc);
 		pil_notify_aop(desc, "off");
+#if IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK)
+		if (IS_ENABLED(CONFIG_SEC_PERIPHERAL_SECURE_CHK) &&
+				secure_check_fail && (ret == -EINVAL) &&
+				(!strcmp(desc->name, "mba") || !strcmp(desc->name, "modem")))
+			sec_peripheral_secure_check_fail();
+#endif
 	}
 	return ret;
 }

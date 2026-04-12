@@ -984,6 +984,7 @@ static int on_freelist(struct kmem_cache *s, struct page *page, void *search)
 	int max_objects;
 
 	fp = page->freelist;
+
 	while (fp && nr <= page->objects) {
 		if (fp == search)
 			return 1;
@@ -1650,7 +1651,6 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	void *start, *p, *next;
 	int idx, order;
 	bool shuffle;
-
 	flags &= gfp_allowed_mask;
 
 	if (gfpflags_allow_blocking(flags))
@@ -1695,7 +1695,6 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	setup_page_debug(s, start, order);
 
 	shuffle = shuffle_freelist(s, page);
-
 	if (!shuffle) {
 		start = fixup_red_left(s, start);
 		start = setup_object(s, page, start);
@@ -1767,6 +1766,7 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	page->mapping = NULL;
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += pages;
+
 	memcg_uncharge_slab(page, order, s);
 	kasan_alloc_pages(page, order);
 	__free_pages(page, order);
@@ -2658,6 +2658,9 @@ load_freelist:
 	 */
 	VM_BUG_ON(!c->page->frozen);
 	c->freelist = get_freepointer(s, freelist);
+#if IS_ENABLED(CONFIG_SEC_SLUB_DEBUG)
+	sec_slub_debug_panic_on_fp_corrupted(s, freelist, c->freelist);
+#endif
 	c->tid = next_tid(c->tid);
 	return freelist;
 
@@ -3041,7 +3044,9 @@ redo:
 
 	/* Same with comment on barrier() in slab_alloc_node() */
 	barrier();
-
+#if IS_ENABLED(CONFIG_SEC_SLUB_DEBUG)
+	sec_slub_debug_save_free_track(s, tail_obj);
+#endif
 	if (likely(page == c->page)) {
 		void **freelist = READ_ONCE(c->freelist);
 

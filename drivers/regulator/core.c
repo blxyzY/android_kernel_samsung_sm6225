@@ -57,7 +57,11 @@ static LIST_HEAD(regulator_map_list);
 static LIST_HEAD(regulator_ena_gpio_list);
 static LIST_HEAD(regulator_supply_alias_list);
 static bool has_full_constraints;
+#if IS_ENABLED(CONFIG_SEC_PM)
+static bool debug_suspend = true;
+#else
 static bool debug_suspend;
+#endif
 
 static struct dentry *debugfs_root;
 
@@ -5305,6 +5309,12 @@ static int regulator_late_cleanup(struct device *dev, void *data)
 
 	if (!regulator_ops_is_valid(rdev, REGULATOR_CHANGE_STATUS))
 		return 0;
+
+#if !IS_ENABLED(CONFIG_SEC_FACTORY)
+	/* to keep on for display regulator */
+	if (c && c->boot_on)
+		return 0;
+#endif
 
 	regulator_lock(rdev);
 

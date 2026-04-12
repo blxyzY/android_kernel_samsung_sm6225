@@ -128,6 +128,12 @@ bool lpm_cluster_mode_allow(struct lpm_cluster *cluster,
 		unsigned int mode, bool from_idle);
 uint32_t *get_per_cpu_max_residency(int cpu);
 uint32_t *get_per_cpu_min_residency(int cpu);
+
+#if IS_ENABLED(CONFIG_SEC_PM)
+extern void debug_rpmstats_show(char *annotation);
+extern void debug_masterstats_show(char *annotation);
+#endif
+
 extern struct lpm_cluster *lpm_root_node;
 
 #if defined(CONFIG_SMP)

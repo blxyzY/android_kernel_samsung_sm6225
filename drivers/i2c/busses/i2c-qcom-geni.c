@@ -2,10 +2,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
-/*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
- */
-
 
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -26,7 +22,6 @@
 #include <linux/ioctl.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/slab.h>
-#include <soc/qcom/boot_stats.h>
 
 #define SE_I2C_TX_TRANS_LEN		(0x26C)
 #define SE_I2C_RX_TRANS_LEN		(0x270)
@@ -356,16 +351,8 @@ irqret:
 static void gi2c_ev_cb(struct dma_chan *ch, struct msm_gpi_cb const *cb_str,
 		       void *ptr)
 {
-	struct geni_i2c_dev *gi2c;
-	u32 m_stat;
-
-	if (!ptr || !cb_str) {
-		pr_err("%s: Invalid ev_cb buffer\n", __func__);
-		return;
-	}
-
-	gi2c = (struct geni_i2c_dev *)ptr;
-	m_stat = cb_str->status;
+	struct geni_i2c_dev *gi2c = ptr;
+	u32 m_stat = cb_str->status;
 
 	switch (cb_str->cb_event) {
 	case MSM_GPI_QUP_ERROR:
@@ -951,7 +938,6 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	struct platform_device *wrapper_pdev;
 	struct device_node *wrapper_ph_node;
 	int ret;
-	char boot_marker[40];
 
 	gi2c = devm_kzalloc(&pdev->dev, sizeof(*gi2c), GFP_KERNEL);
 	if (!gi2c)
@@ -962,9 +948,6 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		gi2c_dev_dbg[arr_idx] = gi2c;
 
 	gi2c->dev = &pdev->dev;
-	snprintf(boot_marker, sizeof(boot_marker),
-				"M - DRIVER GENI_I2C Init");
-	place_marker(boot_marker);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
@@ -1101,10 +1084,6 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		dev_err(gi2c->dev, "Add adapter failed\n");
 		return ret;
 	}
-
-	snprintf(boot_marker, sizeof(boot_marker),
-				"M - DRIVER GENI_I2C_%d Ready", gi2c->adap.nr);
-	place_marker(boot_marker);
 
 	dev_dbg(gi2c->dev, "I2C probed\n");
 	return 0;

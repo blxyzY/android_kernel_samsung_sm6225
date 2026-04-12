@@ -90,6 +90,7 @@ struct disk_stats {
 	unsigned long merges[NR_STAT_GROUPS];
 	unsigned long io_ticks;
 	unsigned long time_in_queue;
+	unsigned long flush_ios;
 };
 
 #define PARTITION_META_INFO_VOLNAMELTH	64
@@ -180,6 +181,12 @@ struct blk_integrity {
 
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
 
+struct accumulated_io_stats {
+	struct timespec uptime;
+	unsigned long sectors[3];	/* READ, WRITE, DISCARD */
+	unsigned long ios[3];
+};
+
 struct gendisk {
 	/* major, first_minor and minors are input parameters only,
 	 * don't use directly.  Use disk_devt() and disk_max_parts().
@@ -214,6 +221,7 @@ struct gendisk {
 	struct timer_rand_state *random;
 	atomic_t sync_io;		/* RAID */
 	struct disk_events *ev;
+	struct accumulated_io_stats accios;
 #ifdef  CONFIG_BLK_DEV_INTEGRITY
 	struct kobject integrity_kobj;
 #endif	/* CONFIG_BLK_DEV_INTEGRITY */
@@ -413,7 +421,8 @@ static inline void free_part_info(struct hd_struct *part)
 	kfree(part->info);
 }
 
-void update_io_ticks(struct hd_struct *part, unsigned long now);
+/* block/blk-core.c */
+extern void part_round_stats(struct request_queue *q, int cpu, struct hd_struct *part);
 
 /* block/genhd.c */
 extern void device_add_disk(struct device *parent, struct gendisk *disk);

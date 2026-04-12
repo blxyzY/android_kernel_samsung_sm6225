@@ -816,6 +816,13 @@ config LEDS_QPNP_VIBRATOR
 	  manually or by the DTEST lines.It uses the android timed-output
 	  framework.
 
+config LEDS_S2MU106_FLASH
+	bool "FLASH LED support for the S2MU106"
+	depends on (MFD_S2MU106) && I2C
+	help
+	  If you say yes here you will get support for
+          the LEDS_S2MU106_FLASH led chip.
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 

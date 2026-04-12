@@ -439,7 +439,7 @@ static int uvc_parse_format(struct uvc_device *dev,
 	unsigned int width_multiplier = 1;
 	unsigned int interval;
 	unsigned int i, n;
-	u8 ftype;
+	u8 ftype = UVC_VS_UNDEFINED;
 
 	format->type = buffer[2];
 	format->index = buffer[3];
@@ -575,8 +575,8 @@ static int uvc_parse_format(struct uvc_device *dev,
 	/* Parse the frame descriptors. Only uncompressed, MJPEG and frame
 	 * based formats have frame descriptors.
 	 */
-	while (buflen > 2 && buffer[1] == USB_DT_CS_INTERFACE &&
-	       buffer[2] == ftype) {
+	while (ftype && buflen > 2 && buffer[1] == USB_DT_CS_INTERFACE &&
+	       buffer[2] == ftype && buffer[2] != UVC_VS_UNDEFINED) {
 		frame = &format->frame[format->nframes];
 		if (ftype != UVC_VS_FRAME_FRAME_BASED)
 			n = buflen > 25 ? buffer[25] : 0;
@@ -931,13 +931,26 @@ error:
 	return ret;
 }
 
-static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
-		unsigned int num_pads, unsigned int extra_size)
+static struct uvc_entity *uvc_alloc_new_entity(struct uvc_device *dev, u16 type,
+					       u16 id, unsigned int num_pads,
+					       unsigned int extra_size)
 {
 	struct uvc_entity *entity;
 	unsigned int num_inputs;
 	unsigned int size;
 	unsigned int i;
+
+	/* Per UVC 1.1+ spec 3.7.2, the ID should be non-zero. */
+	if (id == 0) {
+		dev_err(&dev->udev->dev, "Found Unit with invalid ID 0.\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	/* Per UVC 1.1+ spec 3.7.2, the ID is unique. */
+	if (uvc_entity_by_id(dev, id)) {
+		dev_err(&dev->udev->dev, "Found multiple Units with ID %u\n", id);
+		return ERR_PTR(-EINVAL);
+	}
 
 	extra_size = roundup(extra_size, sizeof(*entity->pads));
 	num_inputs = (type & UVC_TERM_OUTPUT) ? num_pads : num_pads - 1;
@@ -945,7 +958,7 @@ static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
 	     + num_inputs;
 	entity = kzalloc(size, GFP_KERNEL);
 	if (entity == NULL)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	entity->id = id;
 	entity->type = type;
@@ -1016,10 +1029,10 @@ static int uvc_parse_vendor_control(struct uvc_device *dev,
 			break;
 		}
 
-		unit = uvc_alloc_entity(UVC_VC_EXTENSION_UNIT, buffer[3],
-					p + 1, 2*n);
-		if (unit == NULL)
-			return -ENOMEM;
+		unit = uvc_alloc_new_entity(dev, UVC_VC_EXTENSION_UNIT,
+					    buffer[3], p + 1, 2 * n);
+		if (IS_ERR(unit))
+			return PTR_ERR(unit);
 
 		memcpy(unit->extension.guidExtensionCode, &buffer[4], 16);
 		unit->extension.bNumControls = buffer[20];
@@ -1132,10 +1145,10 @@ static int uvc_parse_standard_control(struct uvc_device *dev,
 			return -EINVAL;
 		}
 
-		term = uvc_alloc_entity(type | UVC_TERM_INPUT, buffer[3],
-					1, n + p);
-		if (term == NULL)
-			return -ENOMEM;
+		term = uvc_alloc_new_entity(dev, type | UVC_TERM_INPUT,
+					    buffer[3], 1, n + p);
+		if (IS_ERR(term))
+			return PTR_ERR(term);
 
 		if (UVC_ENTITY_TYPE(term) == UVC_ITT_CAMERA) {
 			term->camera.bControlSize = n;
@@ -1191,10 +1204,10 @@ static int uvc_parse_standard_control(struct uvc_device *dev,
 			return 0;
 		}
 
-		term = uvc_alloc_entity(type | UVC_TERM_OUTPUT, buffer[3],
-					1, 0);
-		if (term == NULL)
-			return -ENOMEM;
+		term = uvc_alloc_new_entity(dev, type | UVC_TERM_OUTPUT,
+					    buffer[3], 1, 0);
+		if (IS_ERR(term))
+			return PTR_ERR(term);
 
 		memcpy(term->baSourceID, &buffer[7], 1);
 
@@ -1217,9 +1230,10 @@ static int uvc_parse_standard_control(struct uvc_device *dev,
 			return -EINVAL;
 		}
 
-		unit = uvc_alloc_entity(buffer[2], buffer[3], p + 1, 0);
-		if (unit == NULL)
-			return -ENOMEM;
+		unit = uvc_alloc_new_entity(dev, buffer[2], buffer[3],
+					    p + 1, 0);
+		if (IS_ERR(unit))
+			return PTR_ERR(unit);
 
 		memcpy(unit->baSourceID, &buffer[5], p);
 
@@ -1243,9 +1257,9 @@ static int uvc_parse_standard_control(struct uvc_device *dev,
 			return -EINVAL;
 		}
 
-		unit = uvc_alloc_entity(buffer[2], buffer[3], 2, n);
-		if (unit == NULL)
-			return -ENOMEM;
+		unit = uvc_alloc_new_entity(dev, buffer[2], buffer[3], 2, n);
+		if (IS_ERR(unit))
+			return PTR_ERR(unit);
 
 		memcpy(unit->baSourceID, &buffer[4], 1);
 		unit->processing.wMaxMultiplier =
@@ -1276,9 +1290,10 @@ static int uvc_parse_standard_control(struct uvc_device *dev,
 			return -EINVAL;
 		}
 
-		unit = uvc_alloc_entity(buffer[2], buffer[3], p + 1, n);
-		if (unit == NULL)
-			return -ENOMEM;
+		unit = uvc_alloc_new_entity(dev, buffer[2], buffer[3],
+					    p + 1, n);
+		if (IS_ERR(unit))
+			return PTR_ERR(unit);
 
 		memcpy(unit->extension.guidExtensionCode, &buffer[4], 16);
 		unit->extension.bNumControls = buffer[20];
@@ -2093,71 +2108,6 @@ struct uvc_device_info {
 	u32	meta_format;
 };
 
-/* ------------------------------------------------------------------------
- * set urb queue size and urb packet size
- *
- */
-static ssize_t store_urb_config(struct device *dev,
-		struct device_attribute *attr, const char *buff, size_t count)
-{
-	struct uvc_streaming *stream;
-	struct usb_interface *intf = to_usb_interface(dev);
-	struct uvc_device *udev = usb_get_intfdata(intf);
-	long max_urb, max_urb_packets;
-	int ret;
-	char *arr, *tmp;
-
-	arr = kstrdup(buff, GFP_KERNEL);
-
-	if (!arr)
-		return -ENOMEM;
-
-	tmp = strsep(&arr, ":");
-
-	if (!tmp)
-		return -EINVAL;
-
-	ret = kstrtol(tmp, 10, &max_urb);
-		if (ret < 0)
-			return ret;
-
-	tmp = strsep(&arr, ":");
-	if (!tmp)
-		return -EINVAL;
-
-	ret = kstrtol(tmp, 10, &max_urb_packets);
-		if (ret < 0)
-			return ret;
-
-	if (max_urb <= 0 || max_urb > 128 ||
-		max_urb_packets <= 0 || max_urb_packets > 128)
-		return -EINVAL;
-
-	list_for_each_entry(stream, &udev->streams, list) {
-		if (stream->refcnt)
-			continue;
-		stream->max_urb = max_urb;
-		stream->max_urb_packets = max_urb_packets;
-	}
-
-	return count;
-}
-
-static ssize_t show_urb_config(struct device *dev,
-		struct device_attribute *attr, char *buff)
-{
-	return 0;
-}
-
-static struct device_attribute urb_config_attr = {
-	.attr = {
-		.name = "urb_config",
-		.mode = 00660,
-	},
-	.show = show_urb_config,
-	.store = store_urb_config,
-};
-
 static int uvc_probe(struct usb_interface *intf,
 		     const struct usb_device_id *id)
 {
@@ -2290,12 +2240,6 @@ static int uvc_probe(struct usb_interface *intf,
 
 	uvc_trace(UVC_TRACE_PROBE, "UVC device initialized.\n");
 	usb_enable_autosuspend(udev);
-
-	/* sysfs file for dynamically setting urb configs */
-	ret = sysfs_create_file(&dev->intf->dev.kobj, &urb_config_attr.attr);
-	if (ret != 0)
-		pr_info("Unable to initialize urb configuration: %d\n", ret);
-
 	return 0;
 
 error:

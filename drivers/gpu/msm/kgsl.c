@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2008-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <uapi/linux/sched/types.h>
@@ -2198,7 +2198,7 @@ long kgsl_ioctl_gpu_aux_command(struct kgsl_device_private *dev_priv,
 	cmdlist = u64_to_user_ptr(param->cmdlist);
 
 	/* Create a draw object for KGSL_GPU_AUX_COMMAND_TIMELINE */
-	if (copy_struct_from_user(&generic, sizeof(generic),
+	if (kgsl_copy_struct_from_user(&generic, sizeof(generic),
 		cmdlist, param->cmdsize)) {
 		ret = -EFAULT;
 		goto err;
@@ -2734,7 +2734,7 @@ static int kgsl_setup_dmabuf_useraddr(struct kgsl_device *device,
 
 	if (vma && vma->vm_file) {
 		int fd;
-
+		
 		ret = check_vma_flags(vma, entry->memdesc.flags);
 		if (ret) {
 			up_read(&current->mm->mmap_sem);
@@ -5476,6 +5476,27 @@ _flush_mem_workqueue(struct work_struct *work)
 	flush_workqueue(kgsl_driver.mem_workqueue);
 }
 
+#ifdef CONFIG_QCOM_KGSL
+static int kgsl_sharedmem_size_notifier(struct notifier_block *nb,
+					unsigned long action, void *data)
+{
+	struct seq_file *s;
+
+	s = (struct seq_file *)data;
+	if (s != NULL)
+		seq_printf(s, "KgslSharedmem:  %8lu kB\n",
+			atomic_long_read(&kgsl_driver.stats.page_alloc) >> 10);
+	else
+		pr_cont("KgslSharedmem:%lukB ",
+			atomic_long_read(&kgsl_driver.stats.page_alloc) >> 10);
+	return 0;
+}
+
+static struct notifier_block kgsl_sharedmem_size_nb = {
+	.notifier_call = kgsl_sharedmem_size_notifier,
+};
+#endif
+
 static void kgsl_core_exit(void)
 {
 	kgsl_events_exit();
@@ -5503,6 +5524,9 @@ static void kgsl_core_exit(void)
 
 	kfree(memfree.list);
 	memset(&memfree, 0, sizeof(memfree));
+#ifdef CONFIG_QCOM_KGSL
+	show_mem_extra_notifier_unregister(&kgsl_sharedmem_size_nb);
+#endif
 
 	unregister_chrdev_region(kgsl_driver.major,
 		ARRAY_SIZE(kgsl_driver.devp));
@@ -5601,6 +5625,10 @@ static int __init kgsl_core_init(void)
 
 	memfree.list = kcalloc(MEMFREE_ENTRIES, sizeof(struct memfree_entry),
 		GFP_KERNEL);
+
+#ifdef CONFIG_QCOM_KGSL
+	show_mem_extra_notifier_register(&kgsl_sharedmem_size_nb);
+#endif
 
 	return 0;
 

@@ -1061,7 +1061,10 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 		/* if the caller didn't specify this heap id */
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
+		tracing_mark_begin("%s(%s, %zu, 0x%x, 0x%x)", "ion_alloc",
+				   heap->name, len, heap_id_mask, flags);
 		buffer = ion_buffer_create(heap, dev, len, flags);
+		tracing_mark_end();
 		if (!IS_ERR(buffer) || PTR_ERR(buffer) == -EINTR)
 			break;
 	}
@@ -1111,7 +1114,9 @@ struct dma_buf *ion_alloc(size_t len, unsigned int heap_id_mask,
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
 		if (heap->type == ION_HEAP_TYPE_SYSTEM ||
+		    heap->type == ION_HEAP_TYPE_CARVEOUT ||
 		    heap->type == (enum ion_heap_type)ION_HEAP_TYPE_HYP_CMA ||
+		    heap->type == (enum ion_heap_type)ION_HEAP_TYPE_RBIN ||
 		    heap->type ==
 			(enum ion_heap_type)ION_HEAP_TYPE_SYSTEM_SECURE) {
 			type_valid = true;

@@ -25,12 +25,6 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/*
- * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
- */
-
 #include <drm/drm_mipi_dsi.h>
 
 #include <linux/device.h>
@@ -185,7 +179,7 @@ of_mipi_dsi_device_add(struct mipi_dsi_host *host, struct device_node *node)
 	info.channel = reg;
 	info.node = of_node_get(node);
 
-	return 0;
+	return mipi_dsi_device_register_full(host, &info);
 }
 #else
 static struct mipi_dsi_device *

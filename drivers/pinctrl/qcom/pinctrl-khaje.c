@@ -1537,7 +1537,13 @@ static const struct msm_pingroup khaje_groups[] = {
 };
 
 static const int khaje_reserved_gpios[] = {
-	0, 1, 2, 3, -1
+#if defined(CONFIG_FINGERPRINT_SECURE) && !defined(CONFIG_SEC_FACTORY)
+	14, 15, 16, 17,
+#endif
+#if IS_ENABLED(CONFIG_MST_LDO)
+	107, 108,
+#endif
+	-1
 };
 
 static const struct msm_pinctrl_soc_data khaje_pinctrl = {

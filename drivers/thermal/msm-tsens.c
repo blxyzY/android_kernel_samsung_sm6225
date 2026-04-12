@@ -18,6 +18,19 @@
 
 LIST_HEAD(tsens_device_list);
 
+#if defined(CONFIG_SEC_PM)
+static struct delayed_work ts_print_work;
+struct tsens_device *ts_tmdev0 = NULL;
+/*
+	Silver: CPUSS.1, CPUSS.2
+	Gold: CPU1.0, CPU1.1, CPU1.2, CPU1.3, CPUSS.0
+	Modem: MDM0, MDM1
+	MAPSS, cDSP HVX, WLAN, CAMERA, VIDEO, DISPLAY, GPU
+*/
+static int ts_print_num0[] = {11, 12, 6, 7, 8, 9, 10, 13, 5, 0, 1, 2, 3, 4, 14, 15};
+static int ts_print_count = 0;
+#endif
+
 static int tsens_get_temp(void *data, int *temp)
 {
 	struct tsens_sensor *s = data;
@@ -253,6 +266,10 @@ static int tsens_tm_remove(struct platform_device *pdev)
 {
 	platform_set_drvdata(pdev, NULL);
 
+#if defined(CONFIG_SEC_PM)
+	cancel_delayed_work_sync(&ts_print_work);
+#endif
+
 	return 0;
 }
 
@@ -287,6 +304,34 @@ static void tsens_therm_fwk_notify(struct work_struct *work)
 		of_thermal_handle_trip(tmdev->min_temp.tzd);
 	}
 }
+
+#if defined(CONFIG_SEC_PM)
+static void __ref ts_print(struct work_struct *work)
+{
+	struct tsens_sensor ts_sensor;
+	int temp = 0;
+	size_t i;
+	int added = 0, ret = 0;
+	char buffer[500] = { 0, };
+
+	ret = snprintf(buffer + added, sizeof(buffer) - added, "tsens");
+	added += ret;
+
+	/* print tsens0 (controller 0) */
+	ts_sensor.tmdev = ts_tmdev0;
+	for (i = 0; i < (sizeof(ts_print_num0) / sizeof(int)); i++) {
+		ts_sensor = ts_tmdev0->sensor[ts_print_num0[i]];
+		tsens_get_temp(&ts_sensor, &temp);
+		ret = snprintf(buffer + added, sizeof(buffer) - added,
+				   "[%d:%d]", ts_print_num0[i], temp/100);
+		added += ret;
+	}
+
+	pr_info("%s: %s\n", __func__, buffer);
+
+	schedule_delayed_work(&ts_print_work, HZ * 5);
+}
+#endif
 
 int tsens_tm_probe(struct platform_device *pdev)
 {
@@ -368,6 +413,18 @@ int tsens_tm_probe(struct platform_device *pdev)
 
 	list_add_tail(&tmdev->list, &tsens_device_list);
 	platform_set_drvdata(pdev, tmdev);
+
+#if defined(CONFIG_SEC_PM)
+	if (!strncmp(tmdev->pdev->name, "4410000", 7)) {
+		ts_tmdev0 = tmdev;
+	}
+
+	if (ts_print_count == 0 && ts_tmdev0 != NULL) {
+		INIT_DELAYED_WORK(&ts_print_work, ts_print);
+		schedule_delayed_work(&ts_print_work, 0);
+		ts_print_count++;
+	}
+#endif
 
 	return rc;
 }

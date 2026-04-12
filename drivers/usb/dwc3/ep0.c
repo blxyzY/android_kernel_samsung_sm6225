@@ -28,6 +28,17 @@
 #include "gadget.h"
 #include "io.h"
 
+#if IS_MODULE(CONFIG_BATTERY_SAMSUNG)
+#include <linux/battery/sec_battery_common.h>
+#elif defined(CONFIG_BATTERY_SAMSUNG)
+#include "../../battery/common/sec_charging_common.h"
+#endif
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+#include <linux/usb_notify.h>
+#endif
+#if IS_ENABLED(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+#include <linux/usb/typec/manager/usb_typec_manager_notifier.h>
+#endif
 static bool enable_dwc3_u1u2;
 module_param(enable_dwc3_u1u2, bool, 0644);
 MODULE_PARM_DESC(enable_dwc3_u1u2, "Enable support for U1U2 low power modes");
@@ -713,6 +724,9 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 				reg |= (DWC3_DCTL_ACCEPTU1ENA |
 							DWC3_DCTL_ACCEPTU2ENA);
 				dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+				/* user notification for android auto connection */
+				if (dwc->usb_function_info & GADGET_ACCESSORY)
+					dwc->acc_dev_status = true;
 			}
 		}
 		break;
@@ -843,8 +857,35 @@ static int dwc3_ep0_std_request(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 	case USB_REQ_SET_ADDRESS:
 		ret = dwc3_ep0_set_address(dwc, ctrl);
 		break;
+	case USB_REQ_GET_DESCRIPTOR:
+		if ((le16_to_cpu(ctrl->wValue) >> 8) == USB_DT_DEVICE
+				&& le16_to_cpu(ctrl->wLength) == USB_DT_DEVICE_SIZE) {
+			pr_info("usb: GET_DES\n");
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+			store_usblog_notify(NOTIFY_USBSTATE,
+				(void *)"USB_STATE=ENUM:GET:DES", NULL);
+#endif
+#if IS_ENABLED(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
+			set_usb_enumeration_state(dwc->gadget.speed);
+#endif
+		}
+		ret = dwc3_ep0_delegate_req(dwc, ctrl);
+		break;
 	case USB_REQ_SET_CONFIGURATION:
 		ret = dwc3_ep0_set_config(dwc, ctrl);
+#if IS_ENABLED(CONFIG_USB_CHARGING_EVENT)
+		if (ret < 0)
+			break;
+		if (dwc->gadget.speed == USB_SPEED_SUPER)
+			dwc->vbus_current = USB_CURRENT_SUPER_SPEED;
+		else
+			dwc->vbus_current = USB_CURRENT_HIGH_SPEED;
+		schedule_work(&dwc->set_vbus_current_work);
+#endif
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		store_usblog_notify(NOTIFY_USBSTATE,
+			(void *)"USB_STATE=ENUM:SET:CON", NULL);
+#endif
 		break;
 	case USB_REQ_SET_SEL:
 		ret = dwc3_ep0_set_sel(dwc, ctrl);

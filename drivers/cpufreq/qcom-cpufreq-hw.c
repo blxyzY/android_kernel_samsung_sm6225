@@ -19,6 +19,9 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
 
+#include <linux/sec_debug.h>
+#include <linux/sec_smem.h>
+
 #define LUT_MAX_ENTRIES			40U
 #define CORE_COUNT_VAL(val)		(((val) & (GENMASK(18, 16))) >> 16)
 #define LUT_ROW_SIZE			32
@@ -295,6 +298,10 @@ qcom_cpufreq_hw_target_index(struct cpufreq_policy *policy,
 		writel_relaxed(index, c->reg_bases[REG_PERF_STATE]);
 	}
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG_APPS_CLK_LOGGING)
+	sec_smem_clk_osm_add_log_cpufreq(policy->cpu,
+			policy->freq_table[index].frequency, policy->kobj.name);
+#endif
 	arch_set_freq_scale(policy->related_cpus,
 			    policy->freq_table[index].frequency,
 			    policy->cpuinfo.max_freq);

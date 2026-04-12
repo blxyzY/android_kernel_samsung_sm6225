@@ -16,6 +16,15 @@
 #include <linux/mod_devicetable.h>
 #include <linux/notifier.h>
 
+#define MAX_REQ_TYPE_INDEX  5		// sbc, cmd, data, stop, busy
+#define MAX_ERR_TYPE_INDEX  2		// timeout, crc
+#define MAX_ERR_LOG_INDEX   (MAX_REQ_TYPE_INDEX * MAX_ERR_TYPE_INDEX)
+
+#define MAX_CNT_U64     0xFFFFFFFFFF
+#define MAX_CNT_U32     0x7FFFFFFF
+#define STATUS_MASK     (R1_ERROR | R1_CC_ERROR | R1_CARD_ECC_FAILED | \
+		R1_WP_VIOLATION | R1_OUT_OF_RANGE)
+
 struct mmc_cid {
 	unsigned int		manfid;
 	char			prod_name[8];
@@ -310,6 +319,27 @@ enum mmc_pon_type {
 
 #define mmc_card_strobe(c) (((c)->ext_csd).strobe_support & MMC_STROBE_SUPPORT)
 
+struct mmc_card_error_log {
+	char	type[MAX_REQ_TYPE_INDEX];
+	int	err_type;
+	u32	status;
+	u64	first_issue_time;
+	u64	last_issue_time;
+	u32	count;
+};
+
+struct mmc_card_status_err_log {
+	u32	ge_cnt;		// status[19] : general error or unknown error
+	u32	cc_cnt;		// status[20] : internal card controller error
+	u32	ecc_cnt;	// status[21] : ecc error
+	u32	wp_cnt;		// status[26] : write protection error
+	u32	oor_cnt;	// status[31] : out of range error
+	u32     halt_cnt;       // cq halt / unhalt fail
+	u32     cq_cnt;         // cq enable / disable fail
+	u32     rpmb_cnt;       // RPMB switch fail
+	u32	noti_cnt;	// uevent notification count
+};
+
 /*
  * MMC device
  */
@@ -402,6 +432,12 @@ struct mmc_card {
 	struct notifier_block   reboot_notify;
 	enum mmc_pon_type	pon_type;
 	struct mmc_bkops_info bkops;
+
+	struct device_attribute error_count;
+	struct mmc_card_error_log err_log[MAX_ERR_LOG_INDEX];
+	struct mmc_card_error_log err_log_backup[MAX_ERR_LOG_INDEX];
+	struct mmc_card_status_err_log status_err_log;
+	struct mmc_card_status_err_log status_err_log_backup;
 };
 
 static inline bool mmc_large_sector(struct mmc_card *card)
@@ -456,6 +492,19 @@ static inline bool mmc_enable_qca9377_settings(const struct mmc_card *c)
 static inline bool mmc_enable_qca9379_settings(const struct mmc_card *c)
 {
 	return c->quirks & MMC_QUIRK_QCA9379_SETTINGS;
+}
+
+static inline void mmc_check_error_count(struct mmc_card_error_log *err_log,
+		unsigned long long *total_c_cnt, unsigned long long *total_t_cnt)
+{
+	int i = 0;
+	//Only sbc(0,1)/cmd(2,3)/data(4,5) is checked.
+	for (i = 0; i < 6; i++) {
+		if (err_log[i].err_type == -EILSEQ && *total_c_cnt < MAX_CNT_U64)
+			*total_c_cnt += err_log[i].count;
+		if (err_log[i].err_type == -ETIMEDOUT && *total_t_cnt < MAX_CNT_U64)
+			*total_t_cnt += err_log[i].count;
+	}
 }
 
 #define mmc_dev_to_card(d)	container_of(d, struct mmc_card, dev)

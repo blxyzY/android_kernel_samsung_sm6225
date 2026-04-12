@@ -228,15 +228,6 @@ static int cnss_wlfw_host_cap_send_sync(struct cnss_plat_data *plat_priv)
 	req->cal_done = plat_priv->cal_done;
 	cnss_pr_dbg("Calibration done is %d\n", plat_priv->cal_done);
 
-	if (plat_priv->cal_duration != CNSS_INVALID_CAL_DURATION) {
-		req->cal_duration_valid = 1;
-		req->cal_duration = plat_priv->cal_duration;
-		cnss_pr_dbg("Calibration duration: %u",
-			    plat_priv->cal_duration);
-	} else {
-		cnss_pr_dbg("Calibration duration not valid");
-	}
-
 	if (!cnss_bus_get_iova(plat_priv, &iova_start, &iova_size) &&
 	    !cnss_bus_get_iova_ipa(plat_priv, &iova_ipa_start,
 				   &iova_ipa_size)) {
@@ -2233,11 +2224,6 @@ int cnss_wlfw_server_arrive(struct cnss_plat_data *plat_priv, void *data)
 
 	if (test_bit(CNSS_QMI_WLFW_CONNECTED, &plat_priv->driver_state)) {
 		cnss_pr_err("Unexpected WLFW server arrive\n");
-		return -EINVAL;
-	}
-
-	if (test_bit(CNSS_IN_REBOOT, &plat_priv->driver_state)) {
-		cnss_pr_err("WLFW server will exit on shutdown\n");
 		return -EINVAL;
 	}
 

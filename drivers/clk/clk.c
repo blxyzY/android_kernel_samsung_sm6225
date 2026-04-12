@@ -31,6 +31,8 @@
 
 #include "clk.h"
 
+#include <linux/sec_debug.h>
+
 static DEFINE_SPINLOCK(enable_lock);
 static DEFINE_MUTEX(prepare_lock);
 
@@ -2276,6 +2278,9 @@ static int clk_change_rate(struct clk_core *core)
 	}
 
 	trace_clk_set_rate(core, core->new_rate);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+	sec_debug_clock_rate_log(core->name, core->new_rate, raw_smp_processor_id());
+#endif
 
 	if (core->new_parent && core->new_parent != core->parent) {
 		old_parent = __clk_set_parent_before(core, core->new_parent);
@@ -2302,12 +2307,17 @@ static int clk_change_rate(struct clk_core *core)
 						best_parent_rate);
 		if (rc) {
 			trace_clk_set_rate_complete(core, core->new_rate);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+			sec_debug_clock_rate_complete_log(core->name, core->new_rate, raw_smp_processor_id());
+#endif
 			goto err_set_rate;
 		}
 	}
 
 	trace_clk_set_rate_complete(core, core->new_rate);
-
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+	sec_debug_clock_rate_complete_log(core->name, core->new_rate, raw_smp_processor_id());
+#endif
 	core->rate = clk_recalc(core, best_parent_rate);
 
 	if (core->flags & CLK_SET_RATE_UNGATE) {
@@ -3222,7 +3232,11 @@ EXPORT_SYMBOL_GPL(clk_set_flags);
 
 static struct dentry *rootdir;
 static int inited = 0;
+#if IS_ENABLED(CONFIG_SEC_PM)
+static u32 debug_suspend = 1;
+#else
 static u32 debug_suspend;
+#endif
 static DEFINE_MUTEX(clk_debug_lock);
 static HLIST_HEAD(clk_debug_list);
 

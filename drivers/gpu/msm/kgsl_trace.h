@@ -19,6 +19,10 @@
 #include "kgsl_drawobj.h"
 #include "kgsl_sharedmem.h"
 
+#if IS_ENABLED(CONFIG_SEC_ABC)
+#include <linux/sti/abc_common.h>
+#endif
+
 struct kgsl_ringbuffer_issueibcmds;
 struct kgsl_device_waittimestamp;
 

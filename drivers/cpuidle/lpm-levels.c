@@ -44,6 +44,15 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/trace_msm_low_power.h>
 
+#include <linux/sec_debug.h>
+
+#if IS_ENABLED(CONFIG_SEC_PM)
+#include <linux/sec-pinmux.h>
+#if IS_ENABLED(CONFIG_SEC_GPIO_DVS)
+#include <linux/secgpio_dvs.h>
+#endif /* CONFIG_SEC_GPIO_DVS */
+#endif /* CONFIG_SEC_PM */
+
 #define SCLK_HZ (32768)
 #define PSCI_POWER_STATE(reset) (reset << 30)
 #define PSCI_AFFINITY_LEVEL(lvl) ((lvl & 0x3) << 24)
@@ -118,6 +127,13 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 static void cluster_prepare(struct lpm_cluster *cluster,
 		const struct cpumask *cpu, int child_idx, bool from_idle,
 		int64_t time);
+
+#if defined(CONFIG_SEC_PM)
+extern void sec_gpio_debug_print(void);
+extern void msm_gpio_print_enabled(void);
+static int msm_pm_sleep_sec_debug;
+module_param_named(secdebug, msm_pm_sleep_sec_debug, int, 0664);
+#endif /* CONFIG_SEC_PM */
 
 static bool print_parsed_dt;
 module_param_named(print_parsed_dt, print_parsed_dt, bool, 0664);
@@ -1107,6 +1123,11 @@ static int cluster_configure(struct lpm_cluster *cluster, int idx,
 		return -EPERM;
 
 	if (idx != cluster->default_level) {
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+		sec_debug_cluster_lpm_log(cluster->cluster_name, idx,
+				cluster->num_children_in_sync.bits[0],
+				cluster->child_cpus.bits[0], from_idle, 1);
+#endif
 		update_debug_pc_event(CLUSTER_ENTER, idx,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
@@ -1269,7 +1290,11 @@ static void cluster_unprepare(struct lpm_cluster *cluster,
 	trace_cluster_exit(cluster->cluster_name, cluster->last_level,
 			cluster->num_children_in_sync.bits[0],
 			cluster->child_cpus.bits[0], from_idle);
-
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+	sec_debug_cluster_lpm_log(cluster->cluster_name, cluster->last_level,
+			cluster->num_children_in_sync.bits[0],
+			cluster->child_cpus.bits[0], from_idle, 0);
+#endif
 	last_level = cluster->last_level;
 	cluster->last_level = cluster->default_level;
 
@@ -1470,8 +1495,17 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	if (need_resched())
 		goto exit;
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+	sec_debug_cpu_lpm_log(dev->cpu, idx, 0, 1);
+#endif
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+	sec_debug_sched_msg("+Idle(%s)", cpu->levels[idx].name);
+#endif
 	success = psci_enter_sleep(cpu, idx, true);
 
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+	sec_debug_sched_msg("-Idle(%s)", cpu->levels[idx].name);
+#endif
 exit:
 	end_time = ktime_to_ns(ktime_get());
 	lpm_stats_cpu_exit(idx, end_time, success);
@@ -1481,6 +1515,9 @@ exit:
 	dev->last_residency = ktime_us_delta(ktime_get(), start);
 	update_history(dev, idx);
 	trace_cpu_idle_exit(idx, success);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_POWER_LOG)
+	sec_debug_cpu_lpm_log(dev->cpu, idx, ret, 0);
+#endif
 	if (lpm_prediction && cpu->lpm_prediction) {
 		histtimer_cancel();
 		clusttimer_cancel();
@@ -1710,6 +1747,27 @@ static void register_cluster_lpm_stats(struct lpm_cluster *cl,
 static int lpm_suspend_prepare(void)
 {
 	suspend_in_progress = true;
+
+#if IS_ENABLED(CONFIG_SEC_GPIO_DVS)
+	gpio_dvs_check_sleepgpio();
+#endif
+
+	/*
+	 * Print the clocks and regulators which are enabled during
+	 * system suspend.  This debug information is useful to know
+	 * which resources are enabled and preventing the system level
+	 * LPMs (XO and Vmin).
+	 */
+	clock_debug_print_enabled();
+	regulator_debug_print_enabled();
+
+#if IS_ENABLED(CONFIG_SEC_PM)
+	if (msm_pm_sleep_sec_debug) {
+		msm_gpio_print_enabled();
+		sec_gpio_debug_print();
+	}
+#endif
+
 	lpm_stats_suspend_enter();
 
 	return 0;
@@ -1739,19 +1797,15 @@ static int lpm_suspend_enter(suspend_state_t state)
 		return 0;
 	}
 
-	/*
-	 * Print the clocks and regulators which are enabled during
-	 * system suspend.  This debug information is useful to know
-	 * which resources are enabled and preventing the system level
-	 * LPMs (XO and Vmin).
-	 */
-	clock_debug_print_enabled();
-	regulator_debug_print_enabled();
-
 	cpu_prepare(lpm_cpu, idx, false);
 	cluster_prepare(cluster, cpumask, idx, false, 0);
-
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+	sec_debug_sched_msg("+Susp(%s)", lpm_cpu->levels[idx].name);
+#endif
 	success = psci_enter_sleep(lpm_cpu, idx, false);
+#if IS_ENABLED(CONFIG_SEC_DEBUG_SCHED_LOG)
+	sec_debug_sched_msg("-Susp(%s)", lpm_cpu->levels[idx].name);
+#endif
 
 	cluster_unprepare(cluster, cpumask, idx, false, 0, success);
 	cpu_unprepare(lpm_cpu, idx, false);

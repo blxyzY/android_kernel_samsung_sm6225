@@ -1498,12 +1498,6 @@ int generic_access_phys(struct vm_area_struct *vma, unsigned long addr,
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
 static inline void vm_write_begin(struct vm_area_struct *vma)
 {
-        /*
-         * Isolated vma might be freed without exclusive mmap_lock but
-         * speculative page fault handler still needs to know it was changed.
-         */
-        if (!RB_EMPTY_NODE(&vma->vm_rb))
-		WARN_ON_ONCE(!rwsem_is_locked(&(vma->vm_mm)->mmap_sem));
 	/*
 	 * The reads never spins and preemption
 	 * disablement is not required.
@@ -2232,8 +2226,15 @@ static inline void __free_reserved_page(struct page *page)
 	__free_page(page);
 }
 
+#if defined(CONFIG_MEMBLOCK_MEMSIZE)
+extern int memblock_memsize_late_free(unsigned long ip, struct page *page);
+#else
+static inline int memblock_memsize_late_free(unsigned long ip, struct page *page) { }
+#endif
+
 static inline void free_reserved_page(struct page *page)
 {
+	memblock_memsize_late_free(_RET_IP_, page);
 	__free_reserved_page(page);
 	adjust_managed_page_count(page, 1);
 }
@@ -2361,6 +2362,17 @@ extern int kswapd_threads;
 extern int min_free_kbytes;
 extern int watermark_boost_factor;
 extern int watermark_scale_factor;
+
+/* ion rbin heap.. */
+void wake_ion_rbin_heap_prereclaim(void);
+void wake_ion_rbin_heap_shrink(void);
+
+/* rbincache.c */
+int init_rbincache(unsigned long pfn, unsigned long nr_pages);
+extern unsigned long totalrbin_pages;
+extern atomic_t rbin_allocated_pages;
+extern atomic_t rbin_cached_pages;
+extern atomic_t rbin_pool_pages;
 
 /* nommu.c */
 extern atomic_long_t mmap_pages_allocated;
@@ -2565,7 +2577,7 @@ int __must_check write_one_page(struct page *page);
 void task_dirty_inc(struct task_struct *tsk);
 
 /* readahead.c */
-#define VM_MAX_READAHEAD	512	/* kbytes */
+#define VM_MAX_READAHEAD	128	/* kbytes */
 #define VM_MIN_READAHEAD	16	/* kbytes (includes current page) */
 
 int force_page_cache_readahead(struct address_space *mapping, struct file *filp,
@@ -3029,6 +3041,8 @@ static inline void setup_nr_node_ids(void) {}
 #endif
 
 extern int want_old_faultaround_pte;
+
+extern inline bool need_memory_boosting(void);
 
 #ifdef CONFIG_PROCESS_RECLAIM
 struct reclaim_param {

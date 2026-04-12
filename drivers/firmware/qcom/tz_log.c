@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/debugfs.h>
 #include <linux/errno.h>
@@ -1135,8 +1134,7 @@ static ssize_t tzdbgfs_read_unencrypted(struct file *file, char __user *buf,
 
 	if (tz_id == TZDBG_BOOT || tz_id == TZDBG_RESET ||
 		tz_id == TZDBG_INTERRUPT || tz_id == TZDBG_GENERAL ||
-		tz_id == TZDBG_VMID || tz_id == TZDBG_LOG ||
-		tz_id == TZDBG_QSEE_LOG)
+		tz_id == TZDBG_VMID || tz_id == TZDBG_LOG)
 		memcpy_fromio((void *)tzdbg.diag_buf, tzdbg.virt_iobase,
 						debug_rw_buf_size);
 
@@ -1236,13 +1234,13 @@ static ssize_t tzdbgfs_read_encrypted(struct file *file, char __user *buf,
 static ssize_t tzdbgfs_read(struct file *file, char __user *buf,
 			    size_t count, loff_t *offp)
 {
+	struct seq_file *seq = file->private_data;
 	int tz_id = TZDBG_STATS_MAX;
 
-	if (file->private_data)
-		tz_id = *(int *)(file->private_data);
+	if (seq)
+		tz_id = *(int *)(seq->private);
 	else {
-		pr_err("%s: file data private null unable to proceed\n",
-			__func__);
+		pr_err("%s: Seq data null unable to proceed\n", __func__);
 		return 0;
 	}
 
