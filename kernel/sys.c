@@ -1241,6 +1241,7 @@ static int override_release(char __user *release, size_t len)
 }
 
 #ifndef CONFIG_FAKE_UNAME_NONE
+
 #if defined(CONFIG_FAKE_UNAME_5_4)
 #define FAKE_UNAME "5.4.296"
 #elif defined(CONFIG_FAKE_UNAME_5_10)
@@ -1254,6 +1255,17 @@ static int override_release(char __user *release, size_t len)
 #elif defined(CONFIG_FAKE_UNAME_6_12)
 #define FAKE_UNAME "6.12.44"
 #endif
+
+static __always_inline bool should_spoof_uname(const char *comm)
+{
+	if (unlikely(current_uid().val != 0))
+		return false;
+
+	return (!strncmp(comm, "bpfloader", 9) ||
+		!strncmp(comm, "netbpfload", 10) ||
+		!strncmp(comm, "netd", 4) ||
+		!strncmp(comm, "uprobestats", 11));
+}
 #endif
 
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
@@ -1263,15 +1275,9 @@ SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
 #ifndef CONFIG_FAKE_UNAME_NONE
-	if (current_uid().val == 0) {
-		if (!strncmp(current->comm, "bpfloader", 9) ||
-			!strncmp(current->comm, "netbpfload", 10) ||
-			!strncmp(current->comm, "netd", 4) ||
-			!strncmp(current->comm, "uprobestats", 11)) {
-			strcpy(tmp.release, FAKE_UNAME);
-			pr_info("fake uname: %s/%d release=%s\n",
-				current->comm, current->pid, tmp.release);
-		}
+	if (unlikely(should_spoof_uname(current->comm))) {
+		strscpy(tmp.release, FAKE_UNAME, sizeof(tmp.release));
+		pr_info("fake uname: %s (pid=%d) release=%s\n", current->comm, current->pid, tmp.release);
 	}
 #endif
 	up_read(&uts_sem);
