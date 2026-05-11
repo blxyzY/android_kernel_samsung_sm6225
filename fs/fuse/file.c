@@ -176,16 +176,9 @@ void fuse_finish_open(struct inode *inode, struct file *file)
 {
 	struct fuse_file *ff = file->private_data;
 	struct fuse_conn *fc = get_fuse_conn(inode);
-	struct fuse_inode *fi = get_fuse_inode(inode);
 
-	if (ff->open_flags & FOPEN_DIRECT_IO ||
-			test_bit(FUSE_I_ATTR_FORCE_SYNC, &fi->state)) {
-		ff->open_flags |= FOPEN_DIRECT_IO;
+	if (ff->open_flags & FOPEN_DIRECT_IO)
 		file->f_op = &fuse_direct_io_file_operations;
-		set_bit(FUSE_I_ATTR_FORCE_SYNC, &fi->state);
-	}
-	if (!(ff->open_flags & FOPEN_KEEP_CACHE))
-		invalidate_inode_pages2(inode->i_mapping);
 	if (ff->open_flags & FOPEN_STREAM)
 		stream_open(inode, file);
 	else if (ff->open_flags & FOPEN_NONSEEKABLE)
@@ -394,7 +387,7 @@ static int fuse_wait_on_page_writeback(struct inode *inode, pgoff_t index)
 {
 	struct fuse_inode *fi = get_fuse_inode(inode);
 
-	fuse_wait_event(fi->page_waitq, !fuse_page_is_writeback(inode, index));
+	wait_event(fi->page_waitq, !fuse_page_is_writeback(inode, index));
 	return 0;
 }
 
@@ -1643,6 +1636,17 @@ int fuse_write_inode(struct inode *inode, struct writeback_control *wbc)
 	int err;
 	/* @fs.sec -- E8B3F75DDB82DFE8F52508F039ABE4FF -- */
 	unsigned int nofs_flag = memalloc_nofs_save();
+
+	/*
+	 * Inode is always written before the last reference is dropped and
+	 * hence this should not be reached from reclaim.
+	 *
+	 * Writing back the inode from reclaim can deadlock if the request
+	 * processing itself needs an allocation.  Allocations triggering
+	 * reclaim while serving a request can't be prevented, because it can
+	 * involve any number of unrelated userspace processes.
+	 */
+	WARN_ON(wbc->for_reclaim);
 
 	ff = __fuse_write_file_get(fc, fi);
 	err = fuse_flush_times(inode, ff);
@@ -3058,6 +3062,8 @@ out:
 
 	if (lock_inode)
 		inode_unlock(inode);
+
+	fuse_flush_time_update(inode);
 
 	return err;
 }
