@@ -33,7 +33,6 @@ include $(srctree)/techpack/audio/config/bengal_a23.conf
 else
 include $(srctree)/techpack/audio/config/bengalauto.conf
 endif
-export
 endif
 
 # Use USERINCLUDE when you must reference the UAPI directories only.
