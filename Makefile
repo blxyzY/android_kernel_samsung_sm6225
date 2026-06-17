@@ -5,6 +5,9 @@ SUBLEVEL = 231
 EXTRAVERSION =
 NAME = "People's Front"
 
+# Techpack
+export PROJECT_NAME=a23
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
