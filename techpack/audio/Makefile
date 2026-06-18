@@ -26,8 +26,10 @@ endif
 ifeq ($(CONFIG_ARCH_BENGAL), y)
 ifeq ($(PROJECT_NAME),$(filter $(PROJECT_NAME),a23))
 include $(srctree)/techpack/audio/config/bengal_a23.conf
+export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/bengal_a23.conf)
 else
 include $(srctree)/techpack/audio/config/bengalauto.conf
+export $(shell sed 's/=.*//' $(srctree)/techpack/audio/config/bengalauto.conf)
 endif
 endif
 
