@@ -1,0 +1,105 @@
+&tlmm {
+	ft820x_tsp_int_active: ft820x_tsp_int_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT_WAKEUP, PULL_UP, DRV_LV4);
+	};
+
+	ft820x_tsp_int_sleep: ft820x_tsp_int_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+
+	ft820x_tsp_int_release: ft820x_tsp_int_release {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT, PULL_NONE, DRV_LV1);
+	};
+};
+
+&tlmm {
+	ft820x_tsp_rst_active: ft820x_tsp_rst_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_UP, DRV_LV4);
+	};
+
+	ft820x_tsp_rst_sleep: ft820x_tsp_rst_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+
+	ft820x_tsp_rst_release: ft820x_tsp_rst_release {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_NONE, DRV_LV1);
+	};
+};
+
+&qupv3_se0_spi {
+	status = "okay";
+	num-cs = <1>;
+	cs-gpios = <SEC_GPIO_REF(AP,tlmm,3) 0>;
+
+	tsp_focaltech: focaltech@1 {
+		spi-max-frequency = <6000000>;
+		compatible = "focaltech,fts";
+		reg = <1>;
+		status = "okay";
+		pinctrl-names = "pmx_ts_active","pmx_ts_suspend","pmx_ts_release";
+		pinctrl-0 = <&ft820x_tsp_int_active &ft820x_tsp_rst_active>;
+		pinctrl-1 = <&ft820x_tsp_int_sleep &ft820x_tsp_rst_sleep>;
+		pinctrl-2 = <&ft820x_tsp_int_release &ft820x_tsp_rst_release>;
+		focaltech,irq-gpio = <SEC_GPIO_REF(AP,tlmm,34) 0x02>;
+		focaltech,reset-gpio = <SEC_GPIO_REF(AP,tlmm,81) 0x01>;
+		focaltech,panel_buck_en = "panel_buck_en";
+		focaltech,panel_buck_en2 = "panel_buck_en2";
+		focaltech,panel_ldo_en = "panel_ldo_en";
+		focaltech,panel_reset ="panel_reset";
+		focaltech,max-touch-number = <10>;
+		focaltech,display-coords = <0 0 1600 2560>;
+		sec,firmware_name = "tsp_focaltech/ft8203_a23.bin";
+		enable_sysinput_enabled;
+		support_dex;
+	};
+};
+
+
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/input/touchscreen/focaltech/ft8720/dts/input-qc-tsp-ft8720.a23.dtsi */
+&tlmm {
+	ft820x_tsp_cs_active: ft820x_tsp_cs_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,3, FUNC_OUTPUT_HIGH, PULL_NONE, DRV_LV3);
+	};
+	ft820x_tsp_cs_sleep: ft820x_tsp_cs_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,3, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+};
+
+&qupv3_se0_spi {
+	num-cs = <2>;
+	cs-gpios = <SEC_GPIO_REF(AP,tlmm,3) 0>, <SEC_GPIO_REF(AP,tlmm,3) 0>;
+};
+
+&tsp_focaltech {
+	pinctrl-0 = <&ft820x_tsp_int_active &ft820x_tsp_rst_active &ft820x_tsp_cs_active>;
+	pinctrl-1 = <&ft820x_tsp_int_sleep &ft820x_tsp_rst_sleep &ft820x_tsp_cs_sleep>;
+
+	focaltech,display-coords = <0 0 1080 2408>;
+
+	sec,lcdid1-gpio = <&pm6125_gpios 2 0x0>;
+	sec,lcdid2-gpio = <&pm6125_gpios 8 0x0>;
+	sec,lcdid3-gpio = <&pm6125_gpios 9 0x0>;
+	sec,lcdid = <6>;
+	sec,lcdtype = <0 0 0 0 0 0 0x4b1270>;
+
+	sec,firmware_name = "", "", "", "", "", "", "tsp_focaltech/ft8720_a23.bin";
+	focaltech,ramtest_name = "tsp_focaltech/ft8720_a23_ramtest.bin";
+
+	sec,name_lcd_rst = "lcd_rst";
+	sec,name_lcd_vddi = "lcd_vddi";
+	sec,name_lcd_bl_en = "lcd_bl_en";
+	sec,name_lcd_vsp = "lcd_vsp";
+	sec,name_lcd_vsn = "lcd_vsn";
+
+	enable_settings_aot;
+	prox_lp_scan_enabled;
+	scan_off_when_cover_closed;
+	enable_vbus_notifier;
+};
+
+&soc {
+	ss_touch {
+		compatible = "samsung,ss_touch";
+		ss_touch,numbers = <1>;
+	};
+};

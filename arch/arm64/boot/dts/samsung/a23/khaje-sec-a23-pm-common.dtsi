@@ -1,0 +1,82 @@
+/* Copyright (c) 2018, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&spmi_bus {
+	qcom,pm7250b@2 {
+		status = "disabled";
+	};
+	qcom,pm7250b@3 {
+		status = "disabled";
+	};
+};
+
+&thermal_zones {
+	pm7250b-tz {
+		status = "disabled";
+	};
+
+	pm7250b-ibat-lvl0 {
+		status = "disabled";
+	};
+
+	pm7250b-ibat-lvl1 {
+		status = "disabled";
+	};
+
+	pm7250b-vbat-lvl0 {
+		status = "disabled";
+	};
+
+	pm7250b-vbat-lvl1 {
+		status = "disabled";
+	};
+
+	pm7250b-vbat-lvl2 {
+		status = "disabled";
+	};
+
+	pm7250b-bcl-lvl0 {
+		status = "disabled";
+	};
+
+	pm7250b-bcl-lvl1 {
+		status = "disabled";
+	};
+
+	pm7250b-bcl-lvl2 {
+		status = "disabled";
+	};
+};
+
+&soc {
+	i2c@990000 {
+		qcom,pm8008@8 {
+			status = "disabled";
+		};
+
+		qcom,pm8008@9 {
+			status = "disabled";
+		};
+	};
+};
+
+/ {
+	fragment@model {
+		target-path = "/";
+		__overlay__ {
+			sec_pm_debug: sec_pm_debug {
+				compatible = "samsung,sec-ap-pmic";
+				status = "ok";
+			};
+		}; /* end of __overlay__ */
+	}; /* end of fragment */
+}; /* end of root */

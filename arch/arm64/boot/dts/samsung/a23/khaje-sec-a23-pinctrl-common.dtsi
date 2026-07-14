@@ -1,0 +1,112 @@
+/* Copyright (c) 2019, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "khaje-sec-a23-audio-pinctrl-common.dtsi"
+
+&tlmm {
+	wakeup-disabled-gpios = <
+		0 	   /* TSP_SPI_MISO */
+		3 	   /* TSP_SPI_CSN */
+		4 	   /* FG_IF_PMIC_SDA_1P8 */
+		6 	   /* CAM_AF_EEP_I2C_SDA_1P8 */
+		8 	   /* BT_UART_CTS */
+		13 	/* AP_UART_RXD */
+		14 	/* BTP_SPI_MISO */
+		17 	/* BTP_SPI_CS_N */
+		18 	/* RCAM1_RST_N */
+		24 	/* LCD_RST */
+		27 	/* FCAM_MCLK */
+		28 	/* RCAM3_4_MCLK */
+		31 	/* NFC_LDO_EN */
+		32 	/* AP_MCU_SCL_1P8 */
+		33 	/* AP_MCU_SDA_1P8 */
+		36 	/* SPK_AMP_INT */
+		62 	/* RFFE5_CLK */
+		65 	/* SPK_AMP_SDA_1P8 */
+		66 	/* SPK_AMP_SCL_1P8 */
+		67 	/* GRIP_SDA_1P8 */
+		69 	/* NFC_EN */
+		72 	/* SIM2_DATA */
+		75 	/* NC */
+		81 	/* TSP_RST */
+		83 	/* CAM_PMIC_I2C_SDA_1P8 */
+		84 	/* CAM_PMIC_I2C_SCL_1P8 */
+		89 	/* 1K PN */
+		91 	/* CP_WLAN_COEX_RXD */
+		93 	/* EXPANDER_SCL_1P8 */
+		94 	/* AP_USB_BOOT_POL_SEL */
+		95 	/* AP_USB_BOOT */
+		96 	/* BTP_LDO_EN */
+		99 	/* SPK_AMP_I2S_WS */
+		103  /* BTP_RST_N */
+		104  /* BAT_ID_2 */
+		106  /* CODEC_RST_N */
+		107  /* MST_DATA_A */
+		109  /* MAGNETIC_BARO_SDA_1P8 */
+		112  /* NC */
+	>;
+
+	qupv3_se1_i2c_pins {
+		qupv3_se1_i2c_sleep {
+			mux {
+				pins = "gpio4", "gpio5";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio4", "gpio5";
+				drive-strength = <2>;
+				input-enable;
+				bias-pull-up;
+			};
+		};
+	};
+
+	sdc2_cd_on: storage_cd_on {
+		mux {
+			pins = "gpio88";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio88";
+			drive-strength = <2>;
+			bias-disable;
+		};
+	};
+
+	sdc2_clk_off: storage_clk_off {
+	        config {
+		        pins = "sdc2_clk";
+		        bias-pull-down;         /* pull down */
+		        drive-strength = <2>;   /* 2 MA */
+	        };
+        };
+
+
+	sdc2_cmd_off: storage_cmd_off {
+	        config {
+		        pins = "sdc2_cmd";
+		        bias-pull-down;         /* pull down */
+		        drive-strength = <2>;   /* 2 MA */
+	        };
+        };
+
+	sdc2_data_off: storage_data_off {
+	        config {
+		        pins = "sdc2_data";
+		        bias-pull-down;         /* pull down */
+		        drive-strength = <2>;   /* 2 MA */
+	        };
+        };
+
+};

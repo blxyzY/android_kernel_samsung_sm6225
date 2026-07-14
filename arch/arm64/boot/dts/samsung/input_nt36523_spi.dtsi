@@ -1,0 +1,203 @@
+/*
+ * SAMSUNG EXYNOS850 board common device tree source
+ *
+ * Copyright (c) 2019 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+&tlmm {
+	nt36523_tsp_int_active: nt36523_tsp_int_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT_WAKEUP, PULL_NONE, DRV_LV4);
+	};
+
+	nt36523_int_sleep: nt36523_tsp_int_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+};
+
+&qupv3_se0_spi {
+	status = "ok";
+	num-cs = <1>;
+
+	/* Novatek device tree node */
+	tsp_novatek: novatek@0 {
+		spi-max-frequency = <9600000>;
+		compatible = "novatek,NVT-ts-spi";
+		reg = <0>;
+		status = "okay";
+
+		pinctrl-names = "default", "on_state", "off_state";
+		pinctrl-0 = <&nt36523_tsp_int_active>;
+		pinctrl-1 = <&nt36523_tsp_int_active>;
+		pinctrl-2 = <&nt36523_int_sleep &nt36523_tsp_rst_sleep>;
+
+		novatek,irq-gpio = <SEC_GPIO_REF(AP,tlmm,34) 0x2002>;
+		novatek,cs-gpio = <SEC_GPIO_REF(AP,tlmm,3) 0>;
+	};
+};
+
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/input/touchscreen/novatek/nt36523_spi/dts/input-qc-tsp-nt36523-spi.a23.dtsi */
+/*
+ * SAMSUNG EXYNOS850 board common device tree source
+ *
+ * Copyright (c) 2019 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+&pm6125_gpios {
+	tsp_id_on: tsp_id_on {
+		pins = "gpio2";
+		function = "normal";
+		input-enable;
+		bias-disable;
+	};
+	tsp_id_off: tsp_id_off {
+		pins = "gpio2";
+		function = "normal";
+		input-enable;
+		bias-disable;
+	};
+	tsp_id2_on: tsp_id2_on {
+		pins = "gpio8";
+		function = "normal";
+		power-source = <1>;
+		input-enable;
+		bias-disable;
+	};
+	tsp_id2_off: tsp_id2_off {
+		pins = "gpio8";
+		function = "normal";
+		power-source = <1>;
+		input-enable;
+		bias-disable;
+	};
+	tsp_id3_on: tsp_id3_on {
+		pins = "gpio9";
+		function = "normal";
+		power-source = <1>;
+		input-enable;
+		bias-disable;
+	};
+	tsp_id3_off: tsp_id3_off {
+		pins = "gpio9";
+		function = "normal";
+		power-source = <1>;
+		input-enable;
+		bias-disable;
+	};
+};
+
+&qupv3_se0_spi_pins {
+	tsp_spi_active: tsp_spi_active {
+		mux {
+			pins = "gpio0", "gpio1",
+				"gpio2";
+			function = "qup0";
+		};
+
+		config {
+			pins = "gpio0", "gpio1",
+				"gpio2";
+			drive-strength = <6>;
+			bias-disable;
+		};
+	};
+	tsp_spi_sleep: tsp_spi_sleep {
+		mux {
+			pins = "gpio0", "gpio1",
+				"gpio2";
+			function = "gpio";
+		};
+
+		config {
+			pins = "gpio0", "gpio1",
+				"gpio2";
+			drive-strength = <6>;
+			bias-pull-down;
+		};
+	};
+};
+
+
+&tlmm {
+	nt36523_tsp_rst_active: nt36523_tsp_rst_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+
+	nt36523_tsp_rst_sleep: nt36523_tsp_rst_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+};
+
+&tlmm {
+	nt36523_tsp_cs_sleep: nt36523_tsp_cs_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,3, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+};
+
+&qupv3_se0_spi {
+	pinctrl-0 = <&tsp_id_on &tsp_id2_on &tsp_id3_on &tsp_spi_active>;
+	pinctrl-1 = <&tsp_id_off &tsp_id2_off &tsp_id3_off &tsp_spi_sleep>;
+	num-cs = <3>;
+};
+
+&tsp_novatek {
+	pinctrl-0 = <&nt36523_tsp_int_active &nt36523_tsp_rst_active &nt36523_tsp_cs_sleep>;
+	pinctrl-2 = <&nt36523_int_sleep &nt36523_tsp_rst_sleep &nt36523_tsp_cs_sleep>;
+
+	novatek,resolution = <1080 2408>;
+	novatek,enable_settings_aot;
+	novatek,support_ear_detect_mode;
+	novatek,prox_lp_scan_enabled;
+	novatek,enable_sysinput_enabled;
+
+	novatek,lcdid1-gpio = <&pm6125_gpios 2 0x0>;
+	novatek,lcdid2-gpio = <&pm6125_gpios 8 0x0>;
+	novatek,lcdid3-gpio = <&pm6125_gpios 9 0x0>;
+	novatek,lcdid = <0 3>;	// CSO Sharp
+	novatek,lcdtype = <0x4bf240 0 0 0x4b1260>;
+
+	novatek,fw_name = "tsp_novatek/nt36672_a23_csot.bin", "", "", "tsp_novatek/nt36672_a23_sharp.bin";
+	novatek,fw_name_mp = "tsp_novatek/nt36672_a23_csot_mp.bin", "", "", "tsp_novatek/nt36672_a23_sharp_mp.bin";
+
+	novatek,name_lcd_rst = "lcd_rst";
+	novatek,name_lcd_vddi = "lcd_vddi";
+	novatek,name_lcd_bl_en = "lcd_bl_en";
+	novatek,name_lcd_vsp = "lcd_vsp";
+	novatek,name_lcd_vsn = "lcd_vsn";
+
+	/* 672A, 525B, 675, 526, 672C */
+	novatek,swrst-n8-addr = <0x03F0FE>;
+	novatek,spi-rd-fast-addr = <0x03F310>;
+
+	/* MP */
+	novatek,mp-support-dt;
+
+	/* nt36672_m33x_csot.bin */
+	novatek-mp-criteria-7235@0 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		compatible = "novatek-mp-criteria-7235";
+
+		/* sec cmd test config */
+		open_test_spec = <(-511) 5120>;
+		short_test_spec = <10000 14008>;
+		diff_test_frame = <50>;
+		fdm_x_num = <2>;
+	};
+};
+
+&soc {
+	ss_touch {
+		compatible = "samsung,ss_touch";
+		ss_touch,numbers = <1>;
+	};
+};
+

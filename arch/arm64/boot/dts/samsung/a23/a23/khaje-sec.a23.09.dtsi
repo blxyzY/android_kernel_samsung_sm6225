@@ -1,0 +1,42 @@
+#include "../../khaje-sec-common.dtsi"
+#include "../khaje-sec-a23-common.dtsi"
+#include "../khaje-sec-a23-pinctrl-common.dtsi"
+#include "../khaje-sec-a23-pm-common.dtsi"
+#include "khaje-sec-a23-camera-sensor-common.dtsi"
+#include "khaje-sec-a23-pinctrl-r09.dtsi"
+
+/ {
+	model = "Samsung A23 PROJECT (board-id,09)";
+	compatible = "qcom,khaje-idp", "qcom,khaje", "qcom,idp";
+	qcom,msm-id = <518 0x10000>;
+	qcom,board-id = <0x10022 9>;
+	qcom,pmic-id = <0x2D 0x0 0x0 0x0>;
+	dtbo-version = <0>;
+};
+
+&bengal_snd {
+	qcom,amp-interface-name = "PRI_MI2S_RX";
+};
+
+&i2c_18 {
+	tfa98xx: tfa98xx@34 {
+		compatible = "tfa,tfa98xx";
+		reg = <0x34>;
+		port_id=<0x1000>;
+		pinctrl-names = "default";
+		reset-gpio = <&gpio_expander 17 0>;
+		irq-gpio = <&tlmm 36 0>;
+	};
+};
+
+&tas256x {
+	status = "disabled";
+};
+
+&soc {
+	sound {
+		acdb-path = "/NEW";
+		mixer-paths = "mixer_paths_new.xml";
+		amp-vendor = "GOODIX";
+	};
+};

@@ -1,0 +1,116 @@
+/* Dummy for Panel Common */
+
+
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/display/qc_S/common/panel_common.a23.00.dtsi */
+/* override display-list / supply for samsung panel */
+
+&soc {
+	ss_dsi_panel_NT36672C_PM6585JB3_FHD_display: qcom,dsi-display@1 {
+	       label = "ss_dsi_panel_NT36672C_PM6585JB3_FHD";
+	};
+
+	A23_ILI7807S_BS066FBM_display: qcom,dsi-display@2 {
+	       label = "A23_ILI7807S_BS066FBM";
+	};
+
+	A23_NT36672C_TCFJ6606_display: qcom,dsi-display@3 {
+	       label = "A23_NT36672C_TCFJ6606";
+	};
+
+	A23_FT8720_LPS066A767A_display: qcom,dsi-display@4 {
+	       label = "A23_FT8720_LPS066A767A";
+	};
+
+	/* PBA */
+	ss_dsi_panel_PBA_BOOTING_FHD_display: qcom,dsi-display@0 {
+		label = "ss_dsi_panel_PBA_BOOTING_FHD";
+	};
+};
+
+&ss_dsi_panel_NT36672C_PM6585JB3_FHD {
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+};
+
+&A23_ILI7807S_BS066FBM {
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+};
+
+&A23_NT36672C_TCFJ6606 {
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+};
+
+&A23_FT8720_LPS066A767A {
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+};
+
+&ss_dsi_panel_PBA_BOOTING_FHD {
+	qcom,dsi-select-clocks = "mux_byte_clk0", "mux_pixel_clk0";
+	qcom,mdss-dsi-pba-regulator_ss;
+
+	qcom,mdss-dsi-display-timings {
+		fhd@0 {
+			qcom,mdss-dsi-panel-phy-timings = [00 1E 08 07 18 22 08 08 08 08 02 04 1A 0D];
+		};
+	};
+
+	qcom,panel-supply-entries
+	{
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		qcom,panel-supply-entry@0 {
+			reg = <0>;
+			qcom,supply-name = "lcd_vddi"; /* VDD 1.8V */
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-pre-on-sleep = <0>; /* unit is ms*/
+			qcom,supply-post-on-sleep = <1>;
+			qcom,supply-post-off-sleep = <2>;
+		};
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "lcd_vsp";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-pre-on-sleep = <0>; /* unit is ms*/
+			qcom,supply-post-on-sleep = <2>;
+			qcom,supply-post-off-sleep = <4>;
+		};
+		qcom,panel-supply-entry@2 {
+			reg = <2>;
+			qcom,supply-name = "lcd_vsn";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-pre-on-sleep = <0>; /* unit is ms*/
+			qcom,supply-post-on-sleep = <13>;
+			qcom,supply-post-off-sleep = <2>;
+		};
+
+		qcom,panel-supply-entry@3 {
+			reg = <3>;
+			qcom,supply-name = "lcd_rst";
+			qcom,supply-min-voltage = <1800000>;
+			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-enable-load = <100000>;
+			qcom,supply-disable-load = <100>;
+			qcom,supply-pre-on-sleep = <0>; /* unit is ms*/
+			qcom,supply-post-on-sleep = <10>;
+			qcom,supply-post-off-sleep = <1>;
+		};
+	};	
+};
+
+&sde_dsi {
+	qcom,dsi-default-panel = <&ss_dsi_panel_NT36672C_PM6585JB3_FHD>;
+
+	pinctrl-names = "panel_active", "panel_suspend";
+	pinctrl-0 = <&panel_jb3_ubcon_active &panel_jb3_esd_1_active>;
+	pinctrl-1 = <&panel_jb3_ubcon_suspend &panel_jb3_esd_1_suspend>;
+};

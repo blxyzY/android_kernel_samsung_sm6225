@@ -1,0 +1,118 @@
+/*
+ * SAMSUNG EXYNOS850 board common device tree source
+ *
+ * Copyright (c) 2019 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+&tlmm {
+	ili9881x_tsp_int_active: ili9881x_tsp_int_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT_WAKEUP, PULL_NONE, DRV_LV4);
+	};
+
+	ili9881x_int_sleep: ili9881x_tsp_int_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,34, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+};
+
+&tlmm {
+	ili9881x_tsp_rst_active: ili9881x_tsp_rst_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+
+	ili9881x_tsp_rst_sleep: ili9881x_tsp_rst_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,81, FUNC_INPUT, PULL_DOWN, DRV_LV1);
+	};
+};
+
+&tlmm {
+	ili9881x_tsp_cs_active: ili9881x_tsp_cs_active {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,3, FUNC_OUTPUT_HIGH, PULL_UP, DRV_LV3);
+	};
+
+	ili9881x_tsp_cs_sleep: ili9881x_tsp_cs_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,3, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+};
+
+&qupv3_se0_spi {
+	status = "ok";
+	num-cs = <1>;
+
+	tsp_ilitek: ilitek@3 {
+		spi-max-frequency = <9600000>;
+		compatible = "ilitek,ili9881x-spi";
+		reg = <3>;
+		status = "okay";
+
+		pinctrl-names = "default", "on_state", "off_state";
+		pinctrl-0 = <&ili9881x_tsp_int_active &ili9881x_tsp_rst_active>;
+		pinctrl-1 = <&ili9881x_tsp_int_active &ili9881x_tsp_rst_active &ili9881x_tsp_cs_active>;
+		pinctrl-2 = <&ili9881x_int_sleep &ili9881x_tsp_rst_sleep &ili9881x_tsp_cs_sleep>;
+
+		ilitek,reset-gpio = <SEC_GPIO_REF(AP,tlmm,81) 0x00>;
+		ilitek,irq-gpio = <SEC_GPIO_REF(AP,tlmm,34) 0x2002>;
+		ilitek,cs-gpio = <SEC_GPIO_REF(AP,tlmm,3) 0>;
+
+		ilitek,irq-on-state = <0>;
+		ilitek,spi-mode = <0>;
+		ilitek,byte-delay-us = <0>;
+		ilitek,block-delay-us = <0>;
+		ilitek,ubl-max-freq = <5000000>;
+		ilitek,ubl-byte-delay-us = <20>;
+		/* power capacitor discharging delay */
+		ilitek,poweroff-discharging-us = <0>;
+		
+		ilitek,enable_sysinput_enabled;
+	};
+};
+
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/input/touchscreen/ilitek/ili9881x/dts/input-qc-tsp-ili9881x.a23.dtsi */
+/*
+ * SAMSUNG EXYNOS850 board common device tree source
+ *
+ * Copyright (c) 2019 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+&qupv3_se0_spi {
+	num-cs = <3>;
+};
+
+&tsp_ilitek {
+	ilitek,lcdid1-gpio = <&pm6125_gpios 2 0x0>;
+	ilitek,lcdid2-gpio = <&pm6125_gpios 8 0x0>;
+	ilitek,lcdid3-gpio = <&pm6125_gpios 9 0x0>;
+	ilitek,lcdid = <0 5>;
+	ilitek,lcdtype = <0 0 0 0 0 0x4b6250>;
+	ilitek,fw_name = "", "", "", "", "", "tsp_ilitek/ili7807_a23.hex";
+
+	ilitek,lcd_rst = "lcd_rst";
+	ilitek,lcd_bl_en = "lcd_bl_en";
+	ilitek,lcd_vddi = "lcd_vddi";
+	ilitek,lcd_vsp = "lcd_vsp";
+	ilitek,lcd_vsn = "lcd_vsn";
+
+	ilitek,poweroff-discharging-us = <2000>;
+
+	ilitek,area-size = <48 81 30>;
+	ilitek,enable_settings_aot;
+	ilitek,support_ear_detect_mode;
+	ilitek,prox_lp_scan_enabled;
+	ilitek,support_spay_gesture_mode;
+};
+
+&soc {
+	ss_touch {
+		compatible = "samsung,ss_touch";
+		ss_touch,numbers = <1>;
+	};
+};

@@ -1,0 +1,134 @@
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#if 0
+#if 0 && !defined(CONFIG_SEC_FACTORY)
+&tlmm {
+/*	gpio-reserved-ranges = <SEC_GPIO_NUM(${ese_spi_miso}) 4>; */
+};
+#endif
+
+&${ese_spi_parent} {
+	ese_spi_cs_sleep: ese_spi_cs_sleep {
+		GPIO_CONFIG_PUD_DRV(${ese_spi_cs}, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+
+	ese_spi_clk_sleep: ese_spi_clk_sleep {
+		GPIO_CONFIG_PUD_DRV(${ese_spi_clk}, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+
+	ese_spi_mosi_sleep: ese_spi_mosi_sleep {
+		GPIO_CONFIG_PUD_DRV(${ese_spi_mosi}, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+
+	ese_spi_miso_sleep: ese_spi_miso_sleep {
+		GPIO_CONFIG_PUD_DRV(${ese_spi_miso}, FUNC_OUTPUT_LOW, PULL_DOWN, DRV_LV3);
+	};
+};
+#if 0
+&${ese_check_parent} {
+	ese_check_default: ese_check_default {
+		GPIO_CONFIG_PUD_DRV(${ese_check}, FUNC_INPUT, PULL_NONE, DRV_LV3);
+	};
+};
+#endif
+
+&${ese_spi} {
+	status = "ok";
+	pinctrl-1 = <&ese_spi_cs_sleep &ese_spi_clk_sleep &ese_spi_mosi_sleep &ese_spi_miso_sleep>;
+	ese_spi@0 {
+		compatible = "ese_p3";
+		reg = <0>;
+		spi-max-frequency = <7000000>;
+#if 0
+		p3-vdd-supply = <&${ese_pvdd_ldo}>;
+#endif
+#if 0
+		check_ese = <SEC_GPIO_REF(${ese_check}) 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&ese_check_default>;
+#endif
+	};
+};
+#endif
+
+&tlmm {
+	nfc_i2c_scl_sleep: nfc_i2c_scl_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,7, FUNC_INPUT, PULL_NONE, DRV_LV3);
+	};
+	nfc_i2c_sda_sleep: nfc_i2c_sda_sleep {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,6, FUNC_INPUT, PULL_NONE, DRV_LV3);
+	};
+	nfc_clk_req_gpio: nfc_clk_req_gpio {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,71, FUNC_INPUT, PULL_DOWN, DRV_LV3);
+	};
+	nfc_irq_gpio: nfc_irq_gpio {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,70, FUNC_INPUT, PULL_DOWN, DRV_LV3);
+	};
+	nfc_ven_gpio: nfc_ven_gpio {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,69, FUNC_OUTPUT_HIGH, PULL_NONE, DRV_LV3);
+	};
+	nfc_firm_gpio: nfc_firm_gpio {
+		GPIO_CONFIG_PUD_DRV(EXP,gpio_expander,9, FUNC_OUTPUT_LOW, PULL_NONE, DRV_LV3);
+	};
+};
+#if 1
+&tlmm {
+	nfc_check_default: nfc_check_default {
+		GPIO_CONFIG_PUD_DRV(AP,tlmm,82, FUNC_INPUT, PULL_NONE, DRV_LV3);
+	};
+};
+#endif
+
+&qupv3_se2_i2c {
+	status = "okay";
+	pinctrl-1 = <&nfc_i2c_scl_sleep &nfc_i2c_sda_sleep>;
+	sec-nfc@27 {
+		compatible = "sec-nfc";
+		reg = <0x27>;
+		interrupt-parent = <SEC_GPIO_TYPE(AP,tlmm,70)>;
+		interrupts = <SEC_GPIO_NUM(AP,tlmm,70) 0>;
+
+		sec-nfc,irq-gpio = <SEC_GPIO_REF(AP,tlmm,70) 0>;
+		sec-nfc,ven-gpio = <SEC_GPIO_REF(AP,tlmm,69) 0>;
+		sec-nfc,firm-gpio = <SEC_GPIO_REF(EXP,gpio_expander,9) 0>;
+		sec-nfc,clk_req-gpio = <SEC_GPIO_REF(AP,tlmm,71) 0>;
+#if 1
+		sec-nfc,check_nfc = <SEC_GPIO_REF(AP,tlmm,82) 0>;
+#endif
+#if 1
+		sec-nfc,clk_req_wake;
+#endif
+		sec-nfc,ldo_control;
+#if 1
+		nfc_pvdd-supply = <&fixed_regulator4>;
+#endif
+		sec-nfc,bootloader_ver = <6>;
+
+		pinctrl-names = "default";
+#if 1
+		pinctrl-0 = <&nfc_clk_req_gpio &nfc_irq_gpio &nfc_ven_gpio &nfc_firm_gpio &nfc_check_default>;
+#else
+		pinctrl-0 = <&nfc_clk_req_gpio &nfc_irq_gpio &nfc_ven_gpio &nfc_firm_gpio>;
+#endif
+	};
+};
+
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/nfc/lsi/nfc_lsi_qc.a23.dtsi */
+&qupv3_se2_i2c {
+	sec-nfc@27 {
+#if 1
+		pinctrl-0 = <&nfc_clk_req_gpio &nfc_irq_gpio &nfc_ven_gpio &nfc_check_default>;
+#else
+		pinctrl-0 = <&nfc_clk_req_gpio &nfc_irq_gpio &nfc_ven_gpio>;
+#endif
+	};
+};

@@ -1,0 +1,103 @@
+&smd {
+	sec_wf_thermistor: sec_thermistor@1 {
+		compatible = "samsung,sec-thermistor";
+		status = "okay";
+		thermistor_name = "sec-wf-thermistor";
+		id = <1>;
+
+		io-channels = SEC_ADC(pm6125_vadc,0x53);
+		io-channel-names = "wf_therm";
+		io-channel-ranges;
+	};
+};
+
+&pm6125_vadc {
+	wf_therm {
+		reg = SEC_ADC_NUM(pm6125_vadc,0x53);
+		label = "wf_therm";
+		qcom,ratiometric;
+		qcom,hw-settle-time = <200>;
+		qcom,pre-scaling = <1 1>;
+
+#if 0
+		/* Set calib type to ADC_SCALE_HW_CALIB_DEFAULT */
+		qcom,scale-fn-type = <5>;
+#else
+		qcom,decimation = <840>;
+		qcom,avg-samples = <8>;
+#endif
+	};
+};
+/* /home/dpi/qb5_8815/workspace/P4_1716/android/kernel/kmodule/hwmon/sec_thermistor/sec_thermistor_qc.a23.dtsi */
+&pm6125_vadc {
+	/delete-node/ camera_flash_therm;
+	/delete-node/ emmc_ufs_therm;
+};
+
+&pm6125_adc_tm_iio {
+	/delete-node/ camera_flash_therm;
+	/delete-node/ emmc_ufs_therm;
+};
+
+&pm6125_gpios {
+    /delete-node/ camera_therm;
+    /delete-node/ emmc_therm;
+
+    gpio3_adc_default: gpio3_adc_default {
+		pins = "gpio3";
+		function = "normal";
+		bias-high-impedance;
+	};
+
+	gpio4_adc_default: gpio4_adc_default {
+		pins = "gpio4";
+		function = "normal";
+		bias-high-impedance;
+	};
+};
+
+&sec_ap_thermistor {
+	use_iio_processed;
+	pinctrl-names = "default";
+	pinctrl-0 = <&gpio3_adc_default>;
+
+	adc_array = <109191 129822 162975 183412 205211 264251 301686 364165 373248
+				452141 573269 669939 740333 805925 924978 1079455 1197015 1305882
+				1400086
+				1494744 1570004 1637413 1690873>;
+
+	temp_array = <900 850 800 750 700 650 600 550 500
+				450 400 350 300 250 200 150 100 50
+				0
+				(-50) (-100) (-150) (-200)>;
+};
+
+&sec_pa_thermistor {
+	use_iio_processed;
+
+	adc_array = <113473 134429 165895 189576 216760 266262 304995 366760 411267
+				477768 576384 676751 768750 845955 958131 1087045 1205384 1311461
+				1407807
+				1502270 1576167 1641111 1695350>;
+
+	temp_array = <900 850 800 750 700 650 600 550 500
+				450 400 350 300 250 200 150 100 50
+				0
+				(-50) (-100) (-150) (-200)>;
+};
+
+&sec_wf_thermistor {
+	use_iio_processed;
+	pinctrl-names = "default";
+	pinctrl-0 = <&gpio4_adc_default>;
+
+	adc_array = <119961 141435 171020 197361 228179 271518 311029 372599 436959
+				500605 586375 685510 788538 879173 986678 1100929 1216608 1320674
+				1417668
+				1510640 1582720 1646301 1700281>;
+
+	temp_array = <900 850 800 750 700 650 600 550 500
+				450 400 350 300 250 200 150 100 50
+				0
+				(-50) (-100) (-150) (-200)>;
+};

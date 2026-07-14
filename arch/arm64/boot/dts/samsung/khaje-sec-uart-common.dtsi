@@ -1,0 +1,96 @@
+/* Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <dt-bindings/clock/qcom,gcc-khaje.h>
+
+&aliases {
+	hsuart8 = "/soc/qcom,qup_hsuart@4a90000";
+};
+
+&soc {
+	/* Debug UART Instance */
+	qcom,qup_hsuart@4a90000 {
+		compatible = "qcom,msm-geni-serial-hs";
+		reg = <0x4a90000 0x4000>;
+		reg-names = "se_phys";
+		clock-names = "se-clk", "m-ahb", "s-ahb";
+		clocks = <&gcc GCC_QUPV3_WRAP0_S4_CLK>,
+			<&gcc GCC_QUPV3_WRAP_0_M_AHB_CLK>,
+			<&gcc GCC_QUPV3_WRAP_0_S_AHB_CLK>;
+		pinctrl-names = "default", "sleep";
+		pinctrl-0 = <&qupv3_se4_2hsuart_tx_active>, <&qupv3_se4_2hsuart_rx_active>;
+		pinctrl-1 = <&qupv3_se4_2hsuart_tx_sleep>, <&qupv3_se4_2hsuart_rx_sleep>;
+		interrupts = <GIC_SPI 331 IRQ_TYPE_LEVEL_HIGH>;
+		qcom,wrapper-core = <&qupv3_0>;
+		always-on-clock;
+		status = "ok";
+	};
+};
+
+&tlmm {
+	qupv3_se4_2hsuart_pins: qupv3_se4_2hsuart_pins {
+		qupv3_se4_2hsuart_tx_active: qupv3_se4_2hsuart_tx_active {
+			mux {
+				pins = "gpio12";
+				function = "qup4";
+			};
+
+			config {
+				pins = "gpio12";
+				drive-strength = <2>;
+				bias-pull-up;
+			};
+		};
+
+		qupv3_se4_2hsuart_rx_active: qupv3_se4_2hsuart_rx_active {
+			mux {
+				pins = "gpio13";
+				function = "qup4";
+			};
+
+			config {
+				pins = "gpio13";
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+
+		qupv3_se4_2hsuart_tx_sleep: qupv3_se4_2hsuart_tx_sleep {
+			mux {
+				pins = "gpio12";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio12";
+				drive-strength = <2>;
+				bias-pull-up;
+				input-enable;
+			};
+		};
+
+		qupv3_se4_2hsuart_rx_sleep: qupv3_se4_2hsuart_rx_sleep {
+			mux {
+				pins = "gpio13";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio13";
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+	};
+};
+
+
