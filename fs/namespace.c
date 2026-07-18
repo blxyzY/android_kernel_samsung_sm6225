@@ -1884,7 +1884,6 @@ struct vfsmount *clone_private_mount(const struct path *path)
 		return ERR_CAST(new_mnt);
 
 	return &new_mnt->mnt;
-#endif
 
 invalid:
 	up_read(&namespace_sem);
