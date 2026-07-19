@@ -343,4 +343,11 @@ config SEC_DEBUG_FPUT_WATCHDOG_TIMEOUT
 	default 180
 	depends on SEC_DEBUG_FPUT_WATCHDOG
 
+config NOMOUNT
+	bool "NoMount Path Redirection Subsystem"
+	default y
+	help
+	  NoMount allows path redirection and virtual file injection
+	  without mounting filesystems. Useful for systemless modifications.
+
 endmenu
