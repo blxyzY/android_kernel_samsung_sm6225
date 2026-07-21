@@ -65,7 +65,9 @@
 #ifdef CONFIG_KSU_SUSFS
 #include <linux/susfs_def.h>
 #endif
+#ifdef CONFIG_TASK_INTEGRITY
 #include <linux/task_integrity.h>
+#endif
 
 #include <linux/uaccess.h>
 #include <asm/mmu_context.h>

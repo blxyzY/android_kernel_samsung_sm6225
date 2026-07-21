@@ -3294,6 +3294,8 @@ struct mnt_namespace *copy_mnt_ns(unsigned long flags, struct mnt_namespace *ns,
 	new = copy_tree(old, old->mnt->mnt_root, copy_flags);
 #else
 	new = copy_tree(old, old->mnt.mnt_root, copy_flags);
+#endif /* CONFIG_KDP_NS */
+
 	if (IS_ERR(new)) {
 		namespace_unlock();
 		free_mnt_ns(new_ns);
