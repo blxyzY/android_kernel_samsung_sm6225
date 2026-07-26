@@ -47,11 +47,8 @@
 #include <qdf_notifier.h>
 #include <qdf_hang_event_notifier.h>
 
-#ifdef MODULE
-#define WLAN_MODULE_NAME  module_name(THIS_MODULE)
-#else
+// Rissu: force init wlan without sysfs!
 #define WLAN_MODULE_NAME  "wlan"
-#endif
 
 #define DISABLE_KRAIT_IDLE_PS_VAL      1
 
@@ -463,19 +460,10 @@ static int hdd_init_qdf_ctx(struct device *dev, void *bdev,
  * Return: return -EPROBE_DEFER to platform driver if return value
  * is -ENOMEM. Platform driver will try to re-probe.
  */
-#ifdef MODULE
 static int check_for_probe_defer(int ret)
 {
 	return ret;
 }
-#else
-static int check_for_probe_defer(int ret)
-{
-	if (ret == -ENOMEM)
-		return -EPROBE_DEFER;
-	return ret;
-}
-#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0))
 static void hdd_abort_system_suspend(struct device *dev)

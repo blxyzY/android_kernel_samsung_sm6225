@@ -4682,6 +4682,10 @@ static inline void wma_update_target_services(struct wmi_unified *wmi_handle,
 	if (wmi_service_enabled(wmi_handle,
 				wmi_roam_scan_chan_list_to_host_support))
 		cfg->is_roam_scan_ch_to_host = true;
+
+	cfg->ll_stats_per_chan_rx_tx_time =
+		wmi_service_enabled(wmi_handle,
+				    wmi_service_ll_stats_per_chan_rx_tx_time);
 }
 
 /**
@@ -6778,8 +6782,7 @@ int wma_rx_service_ready_ext_event(void *handle, uint8_t *event,
 	 * indicate 3 vdevs and firmware shall add 1 vdev for NAN. So decrement
 	 * the num_vdevs by 1.
 	 */
-	if (ucfg_nan_is_vdev_creation_allowed(wma_handle->psoc) ||
-	    QDF_GLOBAL_FTM_MODE == cds_get_conparam()) {
+	if (ucfg_nan_is_vdev_creation_allowed(wma_handle->psoc)) {
 		wlan_res_cfg->nan_separate_iface_support = true;
 	} else {
 		wlan_res_cfg->num_vdevs--;

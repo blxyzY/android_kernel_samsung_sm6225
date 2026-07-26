@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -1140,20 +1139,6 @@ struct rcpi_info {
 
 struct hdd_context;
 
-#ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
-/**
- * enum qdisc_filter_status - QDISC filter status
- * @QDISC_FILTER_RTNL_LOCK_FAIL: rtnl lock acquire failed
- * @QDISC_FILTER_PRIO_MATCH: qdisc filter with priority match
- * @QDISC_FILTER_PRIO_MISMATCH: no filter match with configured priority
- */
-enum qdisc_filter_status {
-	QDISC_FILTER_RTNL_LOCK_FAIL,
-	QDISC_FILTER_PRIO_MATCH,
-	QDISC_FILTER_PRIO_MISMATCH,
-};
-#endif
-
 /**
  * struct hdd_adapter - hdd vdev/net_device context
  * @vdev: object manager vdev context
@@ -1480,7 +1465,7 @@ struct hdd_adapter {
 	bool handle_feature_update;
 
 	qdf_work_t netdev_features_update_work;
-	qdf_atomic_t gro_disallowed;
+	uint8_t gro_disallowed[DP_MAX_RX_THREADS];
 	uint8_t gro_flushed[DP_MAX_RX_THREADS];
 	bool delete_in_progress;
 	qdf_atomic_t net_dev_hold_ref_count[NET_DEV_HOLD_ID_MAX];
@@ -1665,12 +1650,10 @@ enum hdd_sta_smps_param {
  * enum RX_OFFLOAD - Receive offload modes
  * @CFG_LRO_ENABLED: Large Rx offload
  * @CFG_GRO_ENABLED: Generic Rx Offload
- * @CFG_DYNAMIC_GRO_ENABLED: Dynamic GRO enabled
  */
 enum RX_OFFLOAD {
 	CFG_LRO_ENABLED = 1,
 	CFG_GRO_ENABLED,
-	CFG_DYNAMIC_GRO_ENABLED,
 };
 
 /* One per STA: 1 for BCMC_STA_ID, 1 for each SAP_SELF_STA_ID,
@@ -1798,8 +1781,6 @@ struct hdd_adapter_ops_history {
  * @sar_cmd_params: SAR command params to be configured to the FW
  * @rx_aggregation: rx aggregation enable or disable state
  * @gro_force_flush: gro force flushed indication flag
- * @tc_based_dyn_gro: TC based dynamic GRO enable/disable flag
- * @tc_ingress_prio: TC ingress priority
  * @adapter_ops_wq: High priority workqueue for handling adapter operations
  * @is_dual_mac_cfg_updated: indicate whether dual mac cfg has been updated
  */
@@ -1877,6 +1858,7 @@ struct hdd_context {
 	/** P2P Device MAC Address for the adapter  */
 	struct qdf_mac_addr p2p_device_address;
 
+	qdf_wake_lock_t rx_wake_lock;
 	qdf_wake_lock_t sap_wake_lock;
 
 	/* Flag keeps track of wiphy suspend/resume */
@@ -2128,8 +2110,6 @@ struct hdd_context {
 	struct {
 		qdf_atomic_t rx_aggregation;
 		uint8_t gro_force_flush[DP_MAX_RX_THREADS];
-		bool tc_based_dyn_gro;
-		uint32_t tc_ingress_prio;
 	} dp_agg_param;
 #ifdef FW_THERMAL_THROTTLE_SUPPORT
 	uint8_t dutycycle_off_percent;
@@ -2137,7 +2117,13 @@ struct hdd_context {
 
 	qdf_workqueue_t *adapter_ops_wq;
 	struct hdd_adapter_ops_history adapter_ops_history;
+	bool ll_stats_per_chan_rx_tx_time;
 	bool is_dual_mac_cfg_updated;
+
+#ifdef SEC_CONFIG_WLAN_BEACON_CHECK
+	qdf_mc_timer_t skip_bmiss_set_timer;
+	bool bmiss_set_last;
+#endif /* SEC_CONFIG_WLAN_BEACON_CHECK */
 };
 
 /**
@@ -2211,6 +2197,10 @@ struct hdd_channel_info {
 /*
  * Function declarations and documentation
  */
+
+#ifdef SEC_CONFIG_PSM_SYSFS
+int wlan_hdd_sec_get_psm(void);
+#endif /* SEC_CONFIG_PSM_SYSFS */
 
 /**
  * wlan_hdd_history_get_next_index() - get next index to store the history
