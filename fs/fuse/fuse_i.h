@@ -125,6 +125,8 @@ enum {
 	FUSE_I_INIT_RDPLUS,
 	/** An operation changing file size is in progress  */
 	FUSE_I_SIZE_UNSTABLE,
+	/** Can be filled in by open, to use direct I/O on this file. */
+	FUSE_I_ATTR_FORCE_SYNC,
 	/* Bad inode */
 	FUSE_I_BAD,
 };
