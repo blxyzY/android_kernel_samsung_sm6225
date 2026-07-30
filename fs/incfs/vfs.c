@@ -2227,6 +2227,7 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	struct super_block *sb = sget(type, incfs_test_super, set_anon_super,
 				      flags, NULL);
 	int error = 0;
+	bool dir_created = false;
 
 	if (IS_ERR(sb))
 		return ERR_CAST(sb);
@@ -2286,7 +2287,7 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 			pr_err("incfs: Error allocating mount info. %d\n",
 			       error);
 			mi = NULL;
-			goto err;
+			goto err_put_path;
 		}
 		sb->s_fs_info = mi;
 	} else {
@@ -2314,11 +2315,11 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 		sb->s_root = d_make_root(root_inode);
 		if (!sb->s_root) {
 			error = -ENOMEM;
-			goto err;
+			goto err_put_path;
 		}
 		error = incfs_init_dentry(sb->s_root, &backing_dir_path);
 		if (error)
-			goto err;
+			goto err_put_path;
 	}
 
 	mi->mi_backing_dir_path = backing_dir_path;
