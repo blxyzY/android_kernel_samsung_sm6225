@@ -3316,11 +3316,8 @@ static int dwc3_gadget_ep_cleanup_completed_request(struct dwc3_ep *dep,
 		const struct dwc3_event_depevt *event,
 		struct dwc3_request *req, int status)
 {
-<<<<<<< HEAD
 	struct dwc3 *dwc = dep->dwc;
-=======
 	int request_status;
->>>>>>> 0cf3512aeaf42e18084ca24228ea66ebe35a24e7
 	int ret;
 
 	/*
