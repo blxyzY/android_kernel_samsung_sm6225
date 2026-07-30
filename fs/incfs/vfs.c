@@ -2214,7 +2214,6 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	struct super_block *sb = sget(type, NULL, set_anon_super, flags, NULL);
 	bool dir_created = false;
 	int error = 0;
-	bool dir_created = false;
 
 	if (IS_ERR(sb))
 		return ERR_CAST(sb);
