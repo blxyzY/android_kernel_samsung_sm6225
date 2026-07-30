@@ -155,18 +155,6 @@ static int led_pwm_blink_set(struct led_classdev *led_cdev,
 	return rc;
 }
 
-static void __led_pwm_set(struct led_pwm_data *led_data)
-{
-	int new_duty = led_data->duty;
-
-	pwm_config(led_data->pwm, new_duty, led_data->period);
-
-	if (new_duty == 0)
-		pwm_disable(led_data->pwm);
-	else
-		pwm_enable(led_data->pwm);
-}
-
 static int led_pwm_set(struct led_classdev *led_cdev,
 		       enum led_brightness brightness)
 {
