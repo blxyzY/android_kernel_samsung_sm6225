@@ -290,8 +290,8 @@ static int hid_add_field(struct hid_parser *parser, unsigned report_type, unsign
 	offset = report->size;
 	report->size += parser->global.report_size * parser->global.report_count;
 
-	if (parser->device->ll_driver == &acc_hid_ll_driver)
-		max_buffer_size = USB_COMP_EP0_BUFSIZ;
+	if (parser->device->ll_driver->max_buffer_size)
+		max_buffer_size = parser->device->ll_driver->max_buffer_size;
 
 	/* Total size check: Allow for possible report index byte */
 	if (report->size > (max_buffer_size - 1) << 3) {
@@ -985,8 +985,8 @@ struct hid_report *hid_validate_values(struct hid_device *hid,
 		 * Validating on id 0 means we should examine the first
 		 * report in the list.
 		 */
-		report = list_entry(
-				hid->report_enum[type].report_list.next,
+		report = list_first_entry_or_null(
+				&hid->report_enum[type].report_list,
 				struct hid_report, list);
 	} else {
 		report = hid->report_enum[type].report_id_hash[id];
@@ -1135,6 +1135,9 @@ static s32 snto32(__u32 value, unsigned n)
 {
 	if (!value || !n)
 		return 0;
+
+	if (n > 32)
+		n = 32;
 
 	switch (n) {
 	case 8:  return ((__s8)value);
@@ -1569,7 +1572,7 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, u32 size,
 	struct hid_report_enum *report_enum = hid->report_enum + type;
 	struct hid_report *report;
 	struct hid_driver *hdrv;
-	unsigned int max_buffer_size = HID_MAX_BUFFER_SIZE;
+	int max_buffer_size = HID_MAX_BUFFER_SIZE;
 	unsigned int a;
 	u32 rsize, csize = size;
 	u8 *cdata = data;
@@ -1586,8 +1589,8 @@ int hid_report_raw_event(struct hid_device *hid, int type, u8 *data, u32 size,
 
 	rsize = hid_compute_report_size(report);
 
-	if (hid->ll_driver == &acc_hid_ll_driver)
-		max_buffer_size = USB_COMP_EP0_BUFSIZ;
+	if (hid->ll_driver->max_buffer_size)
+		max_buffer_size = hid->ll_driver->max_buffer_size;
 
 	if (report_enum->numbered && rsize >= max_buffer_size)
 		rsize = max_buffer_size - 1;
