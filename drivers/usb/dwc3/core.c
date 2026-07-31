@@ -2033,21 +2033,6 @@ runtime_set_active:
 
 	return 0;
 }
-
-static void dwc3_complete(struct device *dev)
-{
-	struct dwc3	*dwc = dev_get_drvdata(dev);
-	u32		reg;
-
-	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST &&
-			dwc->dis_split_quirk) {
-		reg = dwc3_readl(dwc->regs, DWC3_GUCTL3);
-		reg |= DWC3_GUCTL3_SPLITDISABLE;
-		dwc3_writel(dwc->regs, DWC3_GUCTL3, reg);
-	}
-}
-#else
-#define dwc3_complete NULL
 #endif /* CONFIG_PM_SLEEP */
 
 static const struct dev_pm_ops dwc3_dev_pm_ops = {
