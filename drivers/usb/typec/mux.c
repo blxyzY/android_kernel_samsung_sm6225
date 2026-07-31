@@ -44,18 +44,25 @@ static void *typec_switch_match(struct device_connection *con, int ep,
 {
 	struct device *dev;
 
-	if (con->fwnode) {
-		if (con->id && !fwnode_property_present(con->fwnode, con->id))
-			return NULL;
-
-		dev = class_find_device(&typec_mux_class, NULL, con->fwnode,
-					switch_fwnode_match);
-	} else {
-		dev = class_find_device(&typec_mux_class, NULL,
-					con->endpoint[ep], name_match);
+	if (!con->fwnode) {
+		list_for_each_entry(sw, &switch_list, entry)
+			if (!strcmp(con->endpoint[ep], dev_name(sw->dev)))
+				return sw;
+		return ERR_PTR(-EPROBE_DEFER);
 	}
 
-	return dev ? to_typec_switch(dev) : ERR_PTR(-EPROBE_DEFER);
+	/*
+	 * With OF graph the mux node must have a boolean device property named
+	 * "orientation-switch".
+	 */
+	if (con->id && !fwnode_property_present(con->fwnode, con->id))
+		return NULL;
+
+	list_for_each_entry(sw, &switch_list, entry)
+		if (dev_fwnode(sw->dev) == con->fwnode)
+			return sw;
+
+	return con->id ? ERR_PTR(-EPROBE_DEFER) : NULL;
 }
 
 /**
@@ -189,18 +196,17 @@ static int mux_fwnode_match(struct device *dev, const void *fwnode)
 static void *typec_mux_match(struct device_connection *con, int ep, void *data)
 {
 	const struct typec_altmode_desc *desc = data;
-	struct device *dev;
-	bool match;
+	struct typec_mux *mux;
 	int nval;
+	bool match;
 	u16 *val;
-	int ret;
 	int i;
 
 	if (!con->fwnode) {
-		dev = class_find_device(&typec_mux_class, NULL,
-					con->endpoint[ep], name_match);
-
-		return dev ? to_typec_switch(dev) : ERR_PTR(-EPROBE_DEFER);
+		list_for_each_entry(mux, &mux_list, entry)
+			if (!strcmp(con->endpoint[ep], dev_name(mux->dev)))
+				return mux;
+		return ERR_PTR(-EPROBE_DEFER);
 	}
 
 	/*
@@ -220,7 +226,7 @@ static void *typec_mux_match(struct device_connection *con, int ep, void *data)
 	}
 
 	/* Alternate Mode muxes */
-	nval = fwnode_property_count_u16(con->fwnode, "svid");
+	nval = fwnode_property_read_u16_array(con->fwnode, "svid", NULL, 0);
 	if (nval <= 0)
 		return NULL;
 
@@ -228,10 +234,10 @@ static void *typec_mux_match(struct device_connection *con, int ep, void *data)
 	if (!val)
 		return ERR_PTR(-ENOMEM);
 
-	ret = fwnode_property_read_u16_array(con->fwnode, "svid", val, nval);
-	if (ret < 0) {
+	nval = fwnode_property_read_u16_array(con->fwnode, "svid", val, nval);
+	if (nval < 0) {
 		kfree(val);
-		return ERR_PTR(ret);
+		return ERR_PTR(nval);
 	}
 
 	for (i = 0; i < nval; i++) {
@@ -245,10 +251,11 @@ static void *typec_mux_match(struct device_connection *con, int ep, void *data)
 	return NULL;
 
 find_mux:
-	dev = class_find_device(&typec_mux_class, NULL, con->fwnode,
-				mux_fwnode_match);
+	list_for_each_entry(mux, &mux_list, entry)
+		if (dev_fwnode(mux->dev) == con->fwnode)
+			return mux;
 
-	return dev ? to_typec_mux(dev) : ERR_PTR(-EPROBE_DEFER);
+	return match ? ERR_PTR(-EPROBE_DEFER) : NULL;
 }
 
 /**

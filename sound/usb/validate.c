@@ -222,7 +222,7 @@ static bool validate_uac3_feature_unit(const void *p,
 }
 
 static bool validate_uac3_power_domain_unit(const void *p,
- const struct usb_desc_validator *v)
+					    const struct usb_desc_validator *v)
 {
 	const struct uac3_power_domain_descriptor *d = p;
 
@@ -277,7 +277,7 @@ static const struct usb_desc_validator audio_validators[] = {
 	/* UAC_VERSION_2, UAC2_SAMPLE_RATE_CONVERTER: not implemented yet */
 
 	/* UAC3 */
-	FIXED(UAC_VERSION_2, UAC_HEADER, struct uac3_ac_header_descriptor),
+	FIXED(UAC_VERSION_3, UAC_HEADER, struct uac3_ac_header_descriptor),
 	FIXED(UAC_VERSION_3, UAC_INPUT_TERMINAL,
 	      struct uac3_input_terminal_descriptor),
 	FIXED(UAC_VERSION_3, UAC_OUTPUT_TERMINAL,
