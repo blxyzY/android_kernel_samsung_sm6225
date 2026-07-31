@@ -2271,6 +2271,7 @@ static int dwc3_device_core_soft_reset(struct dwc3 *dwc)
 {
 	u32             reg;
 	int             retries = 10;
+	u32			saved_config = 0;
 
 	/*
 	 * When operating in USB 2.0 speeds (HS/FS), ensure that
@@ -2334,6 +2335,7 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend)
 {
 	u32			reg, reg1;
 	u32			timeout = 1500;
+	u32			saved_config = 0;
 
 	dbg_event(0xFF, "run_stop", is_on);
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
