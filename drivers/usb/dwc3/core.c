@@ -2037,7 +2037,6 @@ runtime_set_active:
 
 static const struct dev_pm_ops dwc3_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(dwc3_suspend, dwc3_resume)
-	.complete = dwc3_complete,
 
 	/*
 	 * Runtime suspend halts the controller on disconnection. It relies on
