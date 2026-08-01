@@ -194,11 +194,21 @@ const struct cred *get_task_cred(struct task_struct *task)
 
 	rcu_read_lock();
 
+#ifdef CONFIG_KDP_CRED
 	do {
 		cred = __task_cred((task));
 		BUG_ON(!cred);
-	} while (!atomic_inc_not_zero(&((struct cred *)cred)->usage));
-
+		if (is_kdp_protect_addr((unsigned long)cred))
+			inc_test = ROCRED_UC_INC_NOT_ZERO(cred);
+		else
+			inc_test = get_cred_rcu(cred);
+	} while (!inc_test);
+#else
+	do {
+		cred = __task_cred((task));
+		BUG_ON(!cred);
+	} while (!get_cred_rcu(cred));
+#endif
 	rcu_read_unlock();
 	return cred;
 }

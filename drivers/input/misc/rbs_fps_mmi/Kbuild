@@ -1,0 +1,6 @@
+ccflags-$(CONFIG_PANEL_NOTIFICATIONS) += -DCONFIG_PANEL_NOTIFICATIONS
+ccflags-$(CONFIG_ET721_FOD) += -DET721_FOD
+
+rbs_fps_mmi-y += etxxx_fp.o
+
+obj-$(CONFIG_INPUT_EGIS_FPS) += rbs_fps_mmi.o

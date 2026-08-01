@@ -1,0 +1,18 @@
+ccflags-y += -I$(src)/tcm
+
+obj-$(CONFIG_TOUCHSCREEN_SYNA_TCM2) := synaptics_v2_mmi.o
+synaptics_v2_mmi-objs := \
+					syna_tcm2.o \
+					syna_tcm2_testing.o \
+					syna_tcm2_sysfs.o \
+					syna_tcm2_platform_spi.o \
+					tcm/synaptics_touchcom_core_v1.o \
+					tcm/synaptics_touchcom_core_v2.o \
+					tcm/synaptics_touchcom_func_base.o \
+					tcm/synaptics_touchcom_func_reflash.o \
+					tcm/synaptics_touchcom_func_touch.o
+
+ifneq ($(filter m y,$(CONFIG_INPUT_TOUCHSCREEN_MMI)),)
+ccflags-y += -DCONFIG_INPUT_TOUCHSCREEN_MMI
+synaptics_v2_mmi-objs += syna_ts_mmi.o
+endif

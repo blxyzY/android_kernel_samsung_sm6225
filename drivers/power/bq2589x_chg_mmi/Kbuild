@@ -1,0 +1,1 @@
+obj-$(CONFIG_BQ2589X_CHARGER) += bq2589x_charger.o

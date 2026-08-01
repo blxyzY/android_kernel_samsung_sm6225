@@ -1,0 +1,14 @@
+obj-$(CONFIG_INPUT_TOUCHSCREEN_ILI_0FLASH_MMI) += ilitek_0flash_mmi.o
+
+ccflags-$(CONFIG_INPUT_TOUCHSCREEN_ILI_0FLASH_MMI_ENABLE_DOUBLE_TAP) += -DILI_SENSOR_EN
+ccflags-$(CONFIG_INPUT_TOUCHSCREEN_ILI_0FLASH_MMI_PANEL_NOTIFICATIONS) += -DILI_CONFIG_PANEL_NOTIFICATIONS
+ccflags-$(CONFIG_INPUT_TOUCHSCREEN_ILI_0FLASH_MMI_RESUME_BY_DDI) += -DILI_CONFIG_RESUME_BY_DDI
+
+ilitek_0flash_mmi-objs += ilitek.o
+ilitek_0flash_mmi-objs += ilitek_spi.o
+ilitek_0flash_mmi-objs += ilitek_qcom.o
+ilitek_0flash_mmi-objs += ilitek_ic.o
+ilitek_0flash_mmi-objs += ilitek_touch.o
+ilitek_0flash_mmi-objs += ilitek_mp.o
+ilitek_0flash_mmi-objs += ilitek_hostdl.o
+ilitek_0flash_mmi-objs += ilitek_node.o

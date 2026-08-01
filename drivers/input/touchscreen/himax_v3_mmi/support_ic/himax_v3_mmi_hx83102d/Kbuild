@@ -1,0 +1,12 @@
+ccflags-y += -DCONFIG_TOUCHSCREEN_HIMAX_DEBUG \
+             -DCONFIG_TOUCHSCREEN_HIMAX_INSPECT
+
+ccflags-y += -DCONFIG_TOUCHSCREEN_HIMAX_INCELL
+ccflags-y += -DCONFIG_HMX_DB
+
+ccflags-$(CONFIG_INPUT_HIMAX_V3_MMI_IC_HX83102D) += -D__HIMAX_HX83102D_MOD__ \
+                                                    -DHX_ZERO_FLASH \
+                                                    -DHX_CODE_OVERLAY
+
+obj-$(CONFIG_INPUT_HIMAX_V3_MMI) += himax_v3_mmi_hx83102d.o
+himax_v3_mmi_hx83102d-objs += himax_ic_HX83102d.o

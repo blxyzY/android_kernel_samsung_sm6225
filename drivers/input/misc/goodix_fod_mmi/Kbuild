@@ -1,0 +1,6 @@
+ccflags-$(CONFIG_INPUT_GOODIX_FOD_MMI_RELAY) += -DMMI_RELAY_MODULE
+ccflags-$(CONFIG_INPUT_GOODIX_FOD_GPIO_PCAL6408) += -DSOFTDEP_GPIO_PCAL6408
+
+goodix_fod_mmi-y += gf_spi.o netlink.o platform.o
+
+obj-$(CONFIG_INPUT_GOODIX_FOD_MMI) += goodix_fod_mmi.o

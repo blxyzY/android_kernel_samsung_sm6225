@@ -1,0 +1,27 @@
+obj-$(CONFIG_TOUCHSCREEN_GOODIX_BRL) := goodix_brl_mmi.o
+goodix_brl_mmi-objs := \
+					goodix_brl_i2c.o \
+					goodix_brl_spi.o \
+					goodix_ts_core.o \
+					goodix_brl_hw.o \
+					goodix_cfg_bin.o \
+					goodix_ts_utils.o \
+					goodix_brl_fwupdate.o \
+					goodix_ts_inspect.o \
+					goodix_ts_tools.o \
+					goodix_ts_config.o
+
+ifneq ($(filter m y,$(CONFIG_GTP_FOD)),)
+    goodix_brl_mmi-objs += goodix_ts_gesture_fod.o
+else
+    goodix_brl_mmi-objs += goodix_ts_gesture.o
+endif
+
+goodix_brl_mmi-$(CONFIG_GTP_DDA_STYLUS) += goodix_ts_dda.o
+
+ifneq ($(filter m y,$(CONFIG_INPUT_TOUCHSCREEN_MMI)),)
+ccflags-y += -DCONFIG_INPUT_TOUCHSCREEN_MMI
+goodix_brl_mmi-objs += goodix_ts_mmi.o
+endif
+
+ccflags-$(CONFIG_INPUT_GOODIX_MMI_ENABLE_PALM) += -DGOODIX_PALM_SENSOR_EN

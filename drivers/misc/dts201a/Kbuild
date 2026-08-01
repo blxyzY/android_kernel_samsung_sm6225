@@ -1,0 +1,11 @@
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -DCAMERA_CCI
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_utils
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_cpas/include
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_sensor_io
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_sensor_utils
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_cci
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_req_mgr
+ccflags-$(CONFIG_FEATURE_USE_CCI) += -I$(srctree)/techpack/camera-bengal/drivers/cam_smmu
+
+dts201a_mmi-y := dts201a.o dts201a-cci.o
+obj-$(CONFIG_DTS201A_MMI) += dts201a_mmi.o

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+# auto-detect subdirs
+ifeq ($(CONFIG_ARCH_BENGAL), y)
+include $(srctree)/techpack/camera-bengal/config/bengalcamera.conf
+endif
+
+ifeq ($(CONFIG_ARCH_KHAJE), y)
+include $(srctree)/techpack/camera-bengal/config/khajecamera.conf
+endif
+
+ifeq ($(CONFIG_ARCH_BENGAL), y)
+LINUXINCLUDE    += \
+		-include $(srctree)/techpack/camera-bengal/config/bengalcameraconf.h
+endif
+
+ifeq ($(CONFIG_ARCH_KHAJE), y)
+LINUXINCLUDE    += \
+		-include $(srctree)/techpack/camera-bengal/config/khajecameraconf.h
+endif
+
+ifneq (,$(filter y, $(CONFIG_BORNEO_DTB) $(CONFIG_CAPRIP_DTB) $(CONFIG_CEBU_DTB) $(CONFIG_GUAM_DTB) $(CONFIG_GUAMP_DTB) $(CONFIG_RHODE_DTB)))
+LINUXINCLUDE    += \
+		-include $(srctree)/techpack/camera-bengal/config/legacycameraconf.h
+endif
+
+ifdef CONFIG_SPECTRA_CAMERA_BENGAL
+# Use USERINCLUDE when you must reference the UAPI directories only.
+USERINCLUDE     += \
+                -I$(srctree)/techpack/camera-bengal/include/uapi
+
+# Use LINUXINCLUDE when you must reference the include/ directory.
+# Needed to be compatible with the O= option
+LINUXINCLUDE    += \
+                -I$(srctree)/techpack/camera-bengal/include/uapi \
+                -I$(srctree)/techpack/camera-bengal/include
+obj-y += drivers/
+endif

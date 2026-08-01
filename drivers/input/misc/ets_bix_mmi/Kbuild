@@ -1,0 +1,3 @@
+ets_bix_mmi-y += etxxx_fp.o
+
+obj-$(CONFIG_INPUT_EGISTEC_BIX) += ets_bix_mmi.o

@@ -1,0 +1,2 @@
+mmi_qc3p_wt6670f-objs += wt6670f_qc3p.o wt6670f_upgrade.o
+obj-$(CONFIG_MMI_QC3P_WT6670F) += mmi_qc3p_wt6670f.o
