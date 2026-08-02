@@ -1402,6 +1402,8 @@ static inline void clear_page_pfmemalloc(struct page *page)
 	page->index = 0;
 }
 
+#define VM_FAULT_PTNOTSAME 0x4000	/* Page table entries have changed */
+
 /*
  * Can be called by the pagefault handler when it gets a VM_FAULT_OOM.
  */
