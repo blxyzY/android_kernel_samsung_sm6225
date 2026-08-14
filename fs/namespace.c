@@ -1098,13 +1098,13 @@ struct vfsmount *vfs_create_mount(struct fs_context *fc)
 	//   for the sake of performance
 	if (static_branch_unlikely(&susfs_is_sdcard_android_data_not_decrypted)) {
 		if (susfs_is_current_ksu_domain()) {
-			mnt = susfs_alloc_non_unshare_ksu_vfsmnt(name ?:"none");
+			mnt = susfs_alloc_non_unshare_ksu_vfsmnt(dev_name ?:"none");
 			goto bypass_orig_flow;
 		}
 	}
 #endif
 
-	mnt = alloc_vfsmnt(name);
+	mnt = alloc_vfsmnt(dev_name);
 
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 bypass_orig_flow:
