@@ -110,3 +110,4 @@ obj-$(CONFIG_HMM) += hmm.o
 obj-$(CONFIG_MEMFD_CREATE) += memfd.o
 obj-$(CONFIG_PROCESS_RECLAIM)	+= process_reclaim.o
 obj-$(CONFIG_PAGE_BOOST_RECORDING) += io_record.o
+obj-y += show_mem_extra.o
