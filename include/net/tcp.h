@@ -1063,6 +1063,7 @@ struct rate_sample {
 
 struct tcp_congestion_ops {
 	struct list_head	list;
+	u32 (*min_tso_segs)(struct sock *sk);
 	u32 key;
 	u32 flags;
 
