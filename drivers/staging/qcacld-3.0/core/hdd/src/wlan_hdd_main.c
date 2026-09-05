@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -82,14 +83,6 @@
 #include <linux/ctype.h>
 #include <linux/compat.h>
 #include <linux/ethtool.h>
-
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-#ifdef CONFIG_LITHIUM
-#include <net/cnss2.h>
-#else
-#include <soc/qcom/icnss.h>
-#endif
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
 
 #ifdef WLAN_FEATURE_DP_BUS_BANDWIDTH
 #include "qdf_periodic_work.h"
@@ -195,9 +188,15 @@
 #include <wlan_hdd_hang_event.h>
 #include <cdp_txrx_ctrl.h>
 #include "wlan_global_lmac_if_api.h"
+#ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
+#include <net/pkt_cls.h>
+#endif
 
-// Rissu: force init wlan without sysfs!
+#ifdef MODULE
+#define WLAN_MODULE_NAME  module_name(THIS_MODULE)
+#else
 #define WLAN_MODULE_NAME  "wlan"
+#endif
 
 #ifdef TIMER_MANAGER
 #define TIMER_MANAGER_STR " +TIMER_MANAGER"
@@ -220,6 +219,12 @@
 #define MAX_NET_DEV_REF_LEAK_ITERATIONS 10
 #define NET_DEV_REF_LEAK_ITERATION_SLEEP_TIME_MS 10
 
+#ifdef FEATURE_TSO
+#define TSO_FEATURE_FLAGS (NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_SG)
+#else
+#define TSO_FEATURE_FLAGS 0
+#endif
+
 int wlan_start_ret_val;
 static DECLARE_COMPLETION(wlan_start_comp);
 static qdf_atomic_t wlan_hdd_state_fops_ref;
@@ -227,23 +232,7 @@ static unsigned int dev_num = 1;
 static struct cdev wlan_hdd_state_cdev;
 static struct class *class;
 static dev_t device;
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-void hdd_sysfs_update_driver_status(int32_t status);
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
-#ifdef SEC_CONFIG_PSM_SYSFS
-int wlan_hdd_sec_get_psm(void);
-#endif /* SEC_CONFIG_PSM_SYSFS */
-#ifdef SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-#ifdef SEC_CONFIG_SUPPORT_MIMO
-static int sec_hw_dbs_capable = 1;
-#else //!SEC_CONFIG_SUPPORT_MIMO
-static int sec_hw_dbs_capable = 0;
-#endif //SEC_CONFIG_SUPPORT_MIMO
-static uint16_t sec_max_station = 0;
-#endif //SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-#ifdef SEC_CONFIG_POWER_BACKOFF
-extern int cur_sec_sar_index;
-#endif /* SEC_CONFIG_POWER_BACKOFF */
+static bool hdd_loaded = false;
 
 /* the Android framework expects this param even though we don't use it */
 #define BUF_LEN 20
@@ -293,12 +282,6 @@ static const struct wiphy_wowlan_support wowlan_support_reg_init = {
 	.pattern_min_len = WOW_MIN_PATTERN_SIZE,
 	.pattern_max_len = WOW_MAX_PATTERN_SIZE,
 };
-
-#ifdef CONFIG_SEC
-static struct cfg80211_wowlan wowlan_config = {
-	.magic_pkt = true,
-};
-#endif /* CONFIG_SEC */
 #endif
 
 static const struct category_info cinfo[MAX_SUPPORTED_CATEGORY] = {
@@ -1672,8 +1655,6 @@ static void hdd_update_tgt_services(struct hdd_context *hdd_ctx,
 	hdd_update_tdls_config(hdd_ctx);
 	sme_update_tgt_services(hdd_ctx->mac_handle, cfg);
 	hdd_ctx->roam_ch_from_fw_supported = cfg->is_roam_scan_ch_to_host;
-	hdd_ctx->ll_stats_per_chan_rx_tx_time =
-					cfg->ll_stats_per_chan_rx_tx_time;
 }
 
 /**
@@ -2507,6 +2488,14 @@ int hdd_update_tgt_cfg(hdd_handle_t hdd_handle, struct wma_tgt_cfg *cfg)
 	if (QDF_IS_STATUS_ERROR(status))
 		hdd_err("Failed to set WNI_CFG_OBSS_COLOR_COLLISION_OFFLOAD");
 
+	if (!cfg->obss_color_collision_offloaded) {
+		status = ucfg_mlme_set_bss_color_collision_det_sta(
+				hdd_ctx->psoc,
+				cfg->obss_color_collision_offloaded);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_err("Failed to set CFG_BSS_CLR_COLLISION_DET_STA");
+	}
+
 	ucfg_mlme_get_bcast_twt(hdd_ctx->psoc, &bval);
 	if (bval)
 		ucfg_mlme_set_bcast_twt(hdd_ctx->psoc, cfg->bcast_twt_support);
@@ -2786,14 +2775,7 @@ wlan_hdd_update_dbs_scan_and_fw_mode_config(void)
 	 * NON-ROME platform.
 	 */
 	if (!policy_mgr_find_if_fw_supports_dbs(hdd_ctx->psoc))
-#ifdef SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-	{
-		sec_hw_dbs_capable = 0;
 		return QDF_STATUS_SUCCESS;
-	}
-#else //!SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-		return QDF_STATUS_SUCCESS;
-#endif //SEC_WRITE_SOFTAP_INFO_IN_SYSFS
 
 	if (hdd_ctx->is_dual_mac_cfg_updated) {
 		hdd_debug("dual mac config has already been updated, skip");
@@ -2804,9 +2786,6 @@ wlan_hdd_update_dbs_scan_and_fw_mode_config(void)
 	cfg.fw_mode_config = 0;
 	cfg.set_dual_mac_cb = policy_mgr_soc_set_dual_mac_cfg_cb;
 	if (policy_mgr_is_hw_dbs_capable(hdd_ctx->psoc)) {
-#ifdef SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-               sec_hw_dbs_capable = 1;
-#endif //SEC_WRITE_SOFTAP_INFO_IN_SYSFS
 		status =
 		ucfg_policy_mgr_get_chnl_select_plcy(hdd_ctx->psoc,
 						     &chnl_sel_logic_conc);
@@ -3640,61 +3619,6 @@ unregister_ip6_notifier:
 out:
 	return ret;
 }
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-void hdd_sysfs_update_driver_status(int32_t status)
-{
-	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
-	uint8_t version[512];
-	uint8_t softap[512];
-
-	if (status == DRIVER_MODULES_ENABLED) {
-		scnprintf(version, 512,
-			"HostSW: %s, "
-			"FW: %d.%d.%d.%d.%d.%d, "
-#if defined(CONFIG_LITHIUM)
-#if defined(QCA_WIFI_QCA6390)
-			"HW: QCA6391, "
-#elif defined(QCA_WIFI_QCA6490)
-			"HW: WCN6850, "
-#else
-			"HW: QCOM, "
-#endif
-#else
-			"HW: WCN39xx, "
-#endif
-			"BoardVersion: %x "
-			"RefdesignID: %x "
-			"CustomerID: %x "
-			"ProjectID: %x "
-			"BoardDataRev: %x\n",
-			QWLAN_VERSIONSTR,
-			hdd_ctx->fw_version_info.major_spid,
-			hdd_ctx->fw_version_info.minor_spid,
-			hdd_ctx->fw_version_info.siid,
-			hdd_ctx->fw_version_info.rel_id,
-			hdd_ctx->fw_version_info.crmid,
-			hdd_ctx->fw_version_info.sub_id,
-			hdd_ctx->hw_bd_info.bdf_version,
-			hdd_ctx->hw_bd_info.ref_design_id,
-			hdd_ctx->hw_bd_info.customer_id,
-			hdd_ctx->hw_bd_info.project_id,
-			hdd_ctx->hw_bd_info.board_data_rev);
-		scnprintf(softap, 512,
-			"#softap.info\nDualBandConcurrency=%s\n5G=%s\nmaxClient=%d\nHalFn_setCountryCodeHal=%s\nHalFn_getValidChannels=%s\nDualInterface=%s\n",
-			sec_hw_dbs_capable ? "yes" : "no",
-			hdd_is_5g_supported(hdd_ctx) ? "yes" : "no",
-			sec_max_station,
-			"yes",
-			"yes",
-			"yes");
-		hdd_info("%s", version);
-		hdd_info("%s", softap);
-		cnss_sysfs_update_driver_status(status, version, softap);
-	} else {
-		cnss_sysfs_update_driver_status(status, NULL, NULL);
-	}
-}
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
 
 #ifdef WLAN_FEATURE_WMI_SEND_RECV_QMI
 static inline
@@ -3932,9 +3856,6 @@ int hdd_wlan_start_modules(struct hdd_context *hdd_ctx, bool reinit)
 	}
 
 	hdd_ctx->driver_status = DRIVER_MODULES_ENABLED;
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-	hdd_sysfs_update_driver_status(DRIVER_MODULES_ENABLED);
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
 	hdd_nofl_debug("Wlan transitioned (now ENABLED)");
 
 	ucfg_ipa_reg_rps_enable_cb(hdd_ctx->pdev,
@@ -3972,9 +3893,6 @@ cds_txrx_free:
 
 close:
 	hdd_ctx->driver_status = DRIVER_MODULES_CLOSED;
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-	hdd_sysfs_update_driver_status(DRIVER_MODULES_CLOSED);
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
 	hdd_info("Wlan transition aborted (now CLOSED)");
 
 	cds_close(hdd_ctx->psoc);
@@ -6561,6 +6479,7 @@ struct hdd_adapter *hdd_open_adapter(struct hdd_context *hdd_ctx, uint8_t sessio
 	qdf_event_create(&adapter->peer_cleanup_done);
 	hdd_sta_info_init(&adapter->sta_info_list);
 	hdd_sta_info_init(&adapter->cache_sta_info_list);
+	qdf_atomic_init(&adapter->gro_disallowed);
 
 	for (i = 0; i < NET_DEV_HOLD_ID_MAX; i++)
 		qdf_atomic_init(
@@ -7223,8 +7142,10 @@ void hdd_set_netdev_flags(struct hdd_adapter *adapter)
 			(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
 
 	if (cdp_cfg_get(soc, cfg_dp_tso_enable) && enable_csum)
-		adapter->dev->features |=
-			 (NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_SG);
+		adapter->dev->features |= TSO_FEATURE_FLAGS;
+
+	if (cdp_cfg_get(soc, cfg_dp_sg_enable))
+		adapter->dev->features |= NETIF_F_SG;
 
 	adapter->dev->features |= NETIF_F_RXCSUM;
 	temp = (uint64_t)adapter->dev->features;
@@ -8814,32 +8735,6 @@ out:
 }
 
 /**
- * hdd_rx_wake_lock_destroy() - Destroy RX wakelock
- * @hdd_ctx:	HDD context.
- *
- * Destroy RX wakelock.
- *
- * Return: None.
- */
-static void hdd_rx_wake_lock_destroy(struct hdd_context *hdd_ctx)
-{
-	qdf_wake_lock_destroy(&hdd_ctx->rx_wake_lock);
-}
-
-/**
- * hdd_rx_wake_lock_create() - Create RX wakelock
- * @hdd_ctx:	HDD context.
- *
- * Create RX wakelock.
- *
- * Return: None.
- */
-static void hdd_rx_wake_lock_create(struct hdd_context *hdd_ctx)
-{
-	qdf_wake_lock_create(&hdd_ctx->rx_wake_lock, "qcom_rx_wakelock");
-}
-
-/**
  * hdd_context_deinit() - Deinitialize HDD context
  * @hdd_ctx:    HDD context.
  *
@@ -8856,8 +8751,6 @@ static int hdd_context_deinit(struct hdd_context *hdd_ctx)
 	wlan_hdd_cfg80211_deinit(hdd_ctx->wiphy);
 
 	hdd_sap_context_destroy(hdd_ctx);
-
-	hdd_rx_wake_lock_destroy(hdd_ctx);
 
 	hdd_scan_context_destroy(hdd_ctx);
 
@@ -8927,20 +8820,6 @@ void hdd_wlan_exit(struct hdd_context *hdd_ctx)
 	hdd_debugfs_mws_coex_info_deinit(hdd_ctx);
 	hdd_psoc_idle_timer_stop(hdd_ctx);
 
-#ifdef SEC_CONFIG_POWER_BACKOFF
-	cur_sec_sar_index = 0;
-#endif /* SEC_CONFIG_POWER_BACKOFF */
-#ifdef SEC_CONFIG_WLAN_BEACON_CHECK
-	if (QDF_TIMER_STATE_RUNNING ==
-		qdf_mc_timer_get_current_state(&hdd_ctx->skip_bmiss_set_timer)) {
-		hdd_debug("Stop skip_bmiss_set_timer");
-		qdf_mc_timer_stop(&hdd_ctx->skip_bmiss_set_timer);
-	}
-
-	if (!QDF_IS_STATUS_SUCCESS
-	   (qdf_mc_timer_destroy(&hdd_ctx->skip_bmiss_set_timer)))
-		hdd_err("Cannot delete skip_bmiss_set_timer");
-#endif /* SEC_CONFIG_WLAN_BEACON_CHECK */
 	/*
 	 * Powersave Offload Case
 	 * Disable Idle Power Save Mode
@@ -9247,9 +9126,6 @@ static int hdd_wiphy_init(struct hdd_context *hdd_ctx)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 	wiphy->wowlan = &wowlan_support_reg_init;
-#ifdef CONFIG_SEC
-	wiphy->wowlan_config = kmemdup(&wowlan_config, sizeof(wowlan_config), GFP_KERNEL);
-#endif /* CONFIG_SEC */
 #else
 	wiphy->wowlan.flags = WIPHY_WOWLAN_ANY |
 			      WIPHY_WOWLAN_MAGIC_PKT |
@@ -9849,6 +9725,151 @@ void hdd_set_vdev_bundle_require_flag(uint16_t vdev_id,
 #endif
 
 #define HDD_BW_GET_DIFF(_x, _y) (unsigned long)((ULONG_MAX - (_y)) + (_x) + 1)
+
+#ifdef WLAN_FEATURE_DYNAMIC_RX_AGGREGATION
+static enum qdisc_filter_status
+__hdd_check_for_prio_filter_in_clsact_qdisc(struct tcf_block *block,
+					    uint32_t prio)
+{
+	struct tcf_chain *chain;
+	struct tcf_proto *tp;
+	enum qdisc_filter_status ret = QDISC_FILTER_PRIO_MISMATCH;
+
+	if (!rtnl_trylock())
+		return QDISC_FILTER_RTNL_LOCK_FAIL;
+
+	list_for_each_entry(chain, &block->chain_list, list) {
+		for (tp = rtnl_dereference(chain->filter_chain); tp;
+		     tp = rtnl_dereference(tp->next)) {
+			if (tp->prio == (prio << 16))
+				ret = QDISC_FILTER_PRIO_MATCH;
+		}
+	}
+	rtnl_unlock();
+
+	return ret;
+}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+/**
+ * hdd_check_for_prio_filter_in_clsact_qdisc() - Check if priority 3 filter
+ *  is configured in the ingress clsact qdisc
+ * @qdisc: pointer to clsact qdisc
+ *
+ * Return: true if priority 3 filter is present else false
+ */
+static enum qdisc_filter_status
+hdd_check_for_prio_filter_in_clsact_qdisc(struct Qdisc *qdisc, uint32_t prio)
+{
+	const struct Qdisc_class_ops *cops;
+	struct tcf_block *ingress_block;
+
+	cops = qdisc->ops->cl_ops;
+	if (qdf_unlikely(!cops || !cops->tcf_block))
+		return QDISC_FILTER_PRIO_MISMATCH;
+
+	ingress_block = cops->tcf_block(qdisc, TC_H_MIN_INGRESS, NULL);
+	if (qdf_unlikely(!ingress_block))
+		return QDISC_FILTER_PRIO_MISMATCH;
+
+	return __hdd_check_for_prio_filter_in_clsact_qdisc(ingress_block, prio);
+}
+#else
+static enum qdisc_filter_status
+hdd_check_for_prio_filter_in_clsact_qdisc(struct Qdisc *qdisc, uint32_t prio)
+{
+	const struct Qdisc_class_ops *cops;
+	struct tcf_block *ingress_block;
+
+	cops = qdisc->ops->cl_ops;
+	if (qdf_unlikely(!cops || !cops->tcf_block))
+		return QDISC_FILTER_PRIO_MISMATCH;
+
+	ingress_block = cops->tcf_block(qdisc, TC_H_MIN_INGRESS);
+	if (qdf_unlikely(!ingress_block))
+		return QDISC_FILTER_PRIO_MISMATCH;
+
+	return __hdd_check_for_prio_filter_in_clsact_qdisc(ingress_block, prio);
+}
+#endif
+
+/**
+ * hdd_rx_check_qdisc_for_adapter() - Check if any ingress qdisc is configured
+ *  for given adapter
+ * @adapter: pointer to HDD adapter context
+ * @rx_ctx_id: Rx context id
+ *
+ * The function checks if ingress qdisc is registered for a given
+ * net device.
+ *
+ * Return: None
+ */
+static void
+hdd_rx_check_qdisc_for_adapter(struct hdd_adapter *adapter)
+{
+	struct hdd_context *hdd_ctx = adapter->hdd_ctx;
+	struct netdev_queue *ingress_q;
+	struct Qdisc *ingress_qdisc;
+	bool disable_gro = false;
+	enum qdisc_filter_status ret;
+
+	if (!adapter->dev->ingress_queue)
+		goto reset_wl;
+
+	rcu_read_lock();
+
+	ingress_q = rcu_dereference(adapter->dev->ingress_queue);
+	if (qdf_unlikely(!ingress_q))
+		goto reset;
+
+	ingress_qdisc = rcu_dereference(ingress_q->qdisc);
+	if (qdf_unlikely(!ingress_qdisc))
+		goto reset;
+
+	if (qdf_str_eq(ingress_qdisc->ops->id, "ingress")) {
+		disable_gro = true;
+	} else if (qdf_str_eq(ingress_qdisc->ops->id, "clsact")) {
+		ret = hdd_check_for_prio_filter_in_clsact_qdisc(ingress_qdisc,
+					 hdd_ctx->dp_agg_param.tc_ingress_prio);
+
+		if (ret == QDISC_FILTER_RTNL_LOCK_FAIL) {
+			rcu_read_unlock();
+			return;
+		} else if (ret == QDISC_FILTER_PRIO_MISMATCH) {
+			goto reset;
+		}
+
+		disable_gro = true;
+	}
+
+	if (disable_gro) {
+		rcu_read_unlock();
+
+		if (qdf_likely(qdf_atomic_read(&adapter->gro_disallowed)))
+			return;
+
+		hdd_debug("ingress qdisc/filter configured disable GRO");
+		qdf_atomic_set(&adapter->gro_disallowed, 1);
+
+		return;
+	}
+
+reset:
+	rcu_read_unlock();
+
+reset_wl:
+	if (qdf_unlikely(qdf_atomic_read(&adapter->gro_disallowed))) {
+		hdd_debug("ingress qdisc/filter removed enable GRO");
+		qdf_atomic_set(&adapter->gro_disallowed, 0);
+	}
+}
+#else
+static inline void
+hdd_rx_check_qdisc_for_adapter(struct hdd_adapter *adapter)
+{
+}
+#endif
+
 static void __hdd_bus_bw_work_handler(struct hdd_context *hdd_ctx)
 {
 	struct hdd_adapter *adapter = NULL, *next_adapter = NULL,
@@ -9894,6 +9915,10 @@ static void __hdd_bus_bw_work_handler(struct hdd_context *hdd_ctx)
 			hdd_adapter_dev_put_debug(adapter, dbgid);
 			continue;
 		}
+
+		if (hdd_ctx->dp_agg_param.tc_based_dyn_gro ||
+		    hdd_ctx->ol_enable == CFG_DYNAMIC_GRO_ENABLED)
+			hdd_rx_check_qdisc_for_adapter(adapter);
 
 		tx_packets += HDD_BW_GET_DIFF(adapter->stats.tx_packets,
 					      adapter->prev_tx_packets);
@@ -11334,8 +11359,6 @@ static int hdd_context_init(struct hdd_context *hdd_ctx)
 	if (ret)
 		goto list_destroy;
 
-	hdd_rx_wake_lock_create(hdd_ctx);
-
 	ret = hdd_sap_context_init(hdd_ctx);
 	if (ret)
 		goto scan_destroy;
@@ -11359,7 +11382,6 @@ sap_destroy:
 
 scan_destroy:
 	hdd_scan_context_destroy(hdd_ctx);
-	hdd_rx_wake_lock_destroy(hdd_ctx);
 list_destroy:
 	qdf_list_destroy(&hdd_ctx->hdd_adapters);
 
@@ -11598,12 +11620,6 @@ static void hdd_init_runtime_pm(struct hdd_config *config,
 				struct wlan_objmgr_psoc *psoc)
 {
 	config->runtime_pm = cfg_get(psoc, CFG_ENABLE_RUNTIME_PM);
-#ifdef SEC_CONFIG_PSM_SYSFS
-	if (wlan_hdd_sec_get_psm()) {
-		config->runtime_pm = 0;
-		printk("[WIFI] CFG_ENABLE_RUNTIME_PM : sec_control_psm = %u", config->runtime_pm = 0);
-	}
-#endif /* SEC_CONFIG_PSM_SYSFS */
 }
 #else
 static void hdd_init_runtime_pm(struct hdd_config *config,
@@ -12164,9 +12180,6 @@ static int hdd_update_cds_config(struct hdd_context *hdd_ctx)
 	cds_cfg->enable_rxthread = hdd_ctx->enable_rxthread;
 	ucfg_mlme_get_sap_max_peers(hdd_ctx->psoc, &value);
 	cds_cfg->max_station = value;
-#ifdef SEC_WRITE_SOFTAP_INFO_IN_SYSFS
-	sec_max_station = value;
-#endif //SEC_WRITE_SOFTAP_INFO_IN_SYSFS
 	cds_cfg->sub_20_channel_width = WLAN_SUB_20_CH_WIDTH_NONE;
 	cds_cfg->max_msdus_per_rxinorderind =
 		cfg_get(hdd_ctx->psoc, CFG_DP_MAX_MSDUS_PER_RXIND);
@@ -13850,9 +13863,6 @@ int hdd_wlan_stop_modules(struct hdd_context *hdd_ctx, bool ftm_mode)
 	hdd_ctx->imps_enabled = false;
 	hdd_ctx->is_dual_mac_cfg_updated = false;
 	hdd_ctx->driver_status = DRIVER_MODULES_CLOSED;
-#if defined (SEC_READ_MACADDR_SYSFS) || defined (SEC_WRITE_VERSION_IN_SYSFS) || defined (SEC_WRITE_SOFTAP_INFO_IN_SYSFS) || defined (SEC_CONFIG_PSM_SYSFS)
-	hdd_sysfs_update_driver_status(DRIVER_MODULES_CLOSED);
-#endif /* SEC_READ_MACADDR_SYSFS || SEC_WRITE_VERSION_IN_SYSFS || SEC_WRITE_SOFTAP_INFO_IN_SYSFS || SEC_CONFIG_PSM_SYSFS */
 	hdd_debug("Wlan transitioned (now CLOSED)");
 
 done:
@@ -14159,34 +14169,12 @@ static QDF_STATUS hdd_open_concurrent_interface(struct hdd_context *hdd_ctx)
 {
 	QDF_STATUS status;
 	const char *iface_name;
-#ifdef CONFIG_SEC
-	struct qdf_mac_addr mac_addr_swlan0;
-#else /* !CONFIG_SEC */
 	uint8_t *mac_addr;
-#endif /* CONFIG_SEC */
 
 	if (qdf_str_eq(hdd_ctx->config->enable_concurrent_sta, ""))
 		return QDF_STATUS_SUCCESS;
 
 	iface_name = hdd_ctx->config->enable_concurrent_sta;
-#ifdef CONFIG_SEC
-	if (hdd_ctx->num_provisioned_addr &&
-		!(hdd_ctx->provisioned_mac_addr[0].bytes[0] & 0x02)) {
-		qdf_mem_copy(mac_addr_swlan0.bytes,
-			hdd_ctx->provisioned_mac_addr[0].bytes,
-			sizeof(tSirMacAddr));
-		mac_addr_swlan0.bytes[0] |= 0x02;
-		mac_addr_swlan0.bytes[4] ^= 0x40;
-	} else {
-		hdd_err("failed to generating swlan0 mac addr.");
-		return -ENODATA;
-	}
-	status = hdd_open_adapter_no_trans(hdd_ctx, QDF_SAP_MODE,
-		iface_name, mac_addr_swlan0.bytes);
-
-		if (QDF_IS_STATUS_ERROR(status))
-		hdd_err("Failed to open concurrent station interface");
-#else /* !CONFIG_SEC */
 	mac_addr = wlan_hdd_get_intf_addr(hdd_ctx, QDF_STA_MODE);
 	if (!mac_addr)
 		return QDF_STATUS_E_INVAL;
@@ -14197,7 +14185,6 @@ static QDF_STATUS hdd_open_concurrent_interface(struct hdd_context *hdd_ctx)
 		wlan_hdd_release_intf_addr(hdd_ctx, mac_addr);
 		hdd_err("Failed to open concurrent station interface");
 	}
-#endif /* CONFIG_SEC */
 
 	return status;
 }
@@ -14402,12 +14389,6 @@ int hdd_wlan_startup(struct hdd_context *hdd_ctx)
 
 	wlan_hdd_update_11n_mode(hdd_ctx);
 
-#ifdef SEC_CONFIG_WLAN_BEACON_CHECK
-	qdf_mc_timer_init(&hdd_ctx->skip_bmiss_set_timer,
-			  QDF_TIMER_TYPE_SW,
-			  hdd_skip_bmiss_set_timer_handler,
-			  hdd_ctx);
-#endif /* SEC_CONFIG_WLAN_BEACON_CHECK */
 	hdd_lpass_notify_wlan_version(hdd_ctx);
 
 	status = wlansap_global_init();
@@ -15606,6 +15587,37 @@ void hdd_init_start_completion(void)
 	INIT_COMPLETION(wlan_start_comp);
 }
 
+#if defined CFG80211_USER_HINT_CELL_BASE_SELF_MANAGED || \
+                    (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0))
+static void hdd_inform_wifi_on(void)
+{
+	int ret;
+	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
+	struct osif_psoc_sync *psoc_sync;
+
+	hdd_nofl_debug("inform regdomain for wifi on");
+	ret = wlan_hdd_validate_context(hdd_ctx);
+	if (ret)
+		return;
+	if (!wlan_hdd_validate_modules_state(hdd_ctx))
+		return;
+	if (!hdd_ctx->wiphy)
+		return;
+	ret = osif_psoc_sync_op_start(wiphy_dev(hdd_ctx->wiphy), &psoc_sync);
+	if (ret)
+		return;
+	if (hdd_ctx->wiphy->registered)
+		hdd_send_wiphy_regd_sync_event(hdd_ctx);
+
+	osif_psoc_sync_op_stop(psoc_sync);
+}
+#else
+static void hdd_inform_wifi_on(void)
+{
+}
+#endif
+
+static int hdd_driver_load(void);
 static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 						const char __user *user_buf,
 						size_t count,
@@ -15617,6 +15629,7 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 	int ret;
 	unsigned long rc;
 	struct hdd_context *hdd_ctx = cds_get_context(QDF_MODULE_ID_HDD);
+	bool turning_on = false;
 
 	if (copy_from_user(buf, user_buf, 3)) {
 		pr_err("Failed to read buffer\n");
@@ -15624,17 +15637,26 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 	}
 
 	if (strncmp(buf, wlan_off_str, strlen(wlan_off_str)) == 0) {
-		pr_debug("Wifi turning off from UI\n");
+		hdd_info("Wifi turning off from UI\n");
 		hdd_inform_wifi_off();
 		goto exit;
 	}
 
-	if (strncmp(buf, wlan_on_str, strlen(wlan_on_str)) == 0)
-		pr_info("Wifi Turning On from UI\n");
+	if (strncmp(buf, wlan_on_str, strlen(wlan_on_str)) == 0) {
+		hdd_info("Wifi Turning On from UI\n");
+		turning_on = true;
+	}
 
 	if (strncmp(buf, wlan_on_str, strlen(wlan_on_str)) != 0) {
 		pr_err("Invalid value received from framework");
 		goto exit;
+	}
+
+	if (!hdd_loaded) {
+		if (hdd_driver_load()) {
+			pr_err("%s: Failed to init hdd module\n", __func__);
+			goto exit;
+		}
 	}
 
 	if (!cds_is_driver_loaded() || cds_is_driver_recovering()) {
@@ -15653,8 +15675,10 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 	 */
 	if (hdd_ctx)
 		hdd_psoc_idle_timer_stop(hdd_ctx);
-
 exit:
+	if (turning_on)
+		hdd_inform_wifi_on();
+
 	return count;
 }
 
@@ -16494,16 +16518,10 @@ static int hdd_driver_load(void)
 
 	hdd_set_conparam(con_mode);
 
-	errno = wlan_hdd_state_ctrl_param_create();
-	if (errno) {
-		hdd_err("Failed to create ctrl param; errno:%d", errno);
-		goto wakelock_destroy;
-	}
-
 	errno = pld_init();
 	if (errno) {
 		hdd_err("Failed to init PLD; errno:%d", errno);
-		goto param_destroy;
+		goto wakelock_destroy;
 	}
 
 	hdd_driver_mode_change_register();
@@ -16518,6 +16536,7 @@ static int hdd_driver_load(void)
 		goto pld_deinit;
 	}
 
+	hdd_loaded = true;
 	hdd_debug("%s: driver loaded", WLAN_MODULE_NAME);
 
 	return 0;
@@ -16536,8 +16555,6 @@ pld_deinit:
 	/* Wait for any ref taken on /dev/wlan to be released */
 	while (qdf_atomic_read(&wlan_hdd_state_fops_ref))
 		;
-param_destroy:
-	wlan_hdd_state_ctrl_param_destroy();
 wakelock_destroy:
 	qdf_wake_lock_destroy(&wlan_wake_lock);
 comp_deinit:
@@ -16643,18 +16660,6 @@ static void hdd_driver_unload(void)
 	hdd_qdf_deinit();
 }
 
-#if defined (SEC_CONFIG_PSM_SYSFS)
-int wlan_hdd_sec_get_psm(void)
-{
-	int psm = 0;
-
-	psm = cnss_sysfs_get_pm_info();
-//	hdd_info("psm %d", psm);
-
-	return psm;
-}
-#endif /* SEC_CONFIG_PSM_SYSFS */
-
 /**
  * hdd_module_init() - Module init helper
  *
@@ -16664,10 +16669,13 @@ int wlan_hdd_sec_get_psm(void)
  */
 static int hdd_module_init(void)
 {
-	if (hdd_driver_load())
-		return -EINVAL;
+	int ret;
 
-	return 0;
+	ret = wlan_hdd_state_ctrl_param_create();
+	if (ret)
+		pr_err("wlan_hdd_state_create:%x\n", ret);
+
+	return ret;
 }
 
 /**

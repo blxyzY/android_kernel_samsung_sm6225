@@ -1,7 +1,7 @@
 comment "Qualcomm Atheros CLD WLAN module"
 
 config QCA_CLD_WLAN
-	bool "Qualcomm Atheros CLD WLAN module"
+	tristate "Qualcomm Atheros CLD WLAN module"
 	default n
 	help
 	  Add support for the Qualcomm Atheros CLD WLAN module

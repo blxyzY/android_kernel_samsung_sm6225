@@ -3574,7 +3574,6 @@ struct wifi_interface_info {
 	uint8_t apCountryStr[CFG_COUNTRY_CODE_LEN];
 	/* country string for this association */
 	uint8_t countryStr[CFG_COUNTRY_CODE_LEN];
-	uint8_t time_slice_duty_cycle;
 };
 
 /**
@@ -3615,17 +3614,12 @@ struct wifi_rate_info {
  * struct wifi_channel_stats - channel statistics
  * @channel: channel for which the stats are applicable
  * @on_time: msecs the radio is awake
- * @cca_busy_time: secs the CCA register is busy excluding own tx_time
- * @tx_time: msecs the radio is transmitting on this channel
- * @rx_time: msecs the radio is in active receive on this channel
+ * @cca_busy_time: secs the CCA register is busy
  */
 struct wifi_channel_stats {
 	struct wifi_channel_info channel;
 	uint32_t on_time;
 	uint32_t cca_busy_time;
-	uint32_t tx_time;
-	uint32_t rx_time;
-
 };
 
 /**
