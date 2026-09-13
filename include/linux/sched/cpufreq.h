@@ -34,6 +34,13 @@ static inline unsigned long map_util_freq(unsigned long util,
 {
 	return (freq + (freq >> 2)) * util / cap;
 }
+
+/* Vorpal CPUFreq governor helpers — kernel 4.19 */
+struct task_struct;
+void rfx_get_util_k419(int cpu, unsigned long boost,
+			unsigned long *out_util, unsigned long *out_bw_min);
+bool rfx_dl_bw_exceeded_k419(int cpu, unsigned long bw_min);
+int rfx_setattr_sugov_k419(struct task_struct *t);
 #endif /* CONFIG_CPU_FREQ */
 
 #endif /* _LINUX_SCHED_CPUFREQ_H */
