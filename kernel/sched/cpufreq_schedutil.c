@@ -440,6 +440,7 @@ unsigned long schedutil_cpu_util(int cpu, unsigned long util_cfs,
 
 	return min(max, util);
 }
+EXPORT_SYMBOL_GPL(schedutil_cpu_util);
 
 #ifdef CONFIG_SCHED_WALT
 static unsigned long sugov_get_util(struct sugov_cpu *sg_cpu)
@@ -1449,3 +1450,123 @@ static int __init sugov_register(void)
 	return cpufreq_register_governor(&schedutil_gov);
 }
 fs_initcall(sugov_register);
+
+/* ============================================================
+ * Vorpal CPUFreq Governor — Kernel 4.19 helpers (v2.2)
+ *
+ * Appended to the END of kernel/sched/cpufreq_schedutil.c.
+ *
+ * API surface actually present in your 4.19 tree:
+ *   cpu_util_cfs(rq)              -> exists, takes struct rq *
+ *   cpu_util_rt(rq)               -> exists, takes struct rq *
+ *   cpu_util_dl(rq)               -> exists, takes struct rq *
+ *   cpu_util_irq(rq)              -> exists, takes struct rq *
+ *   cpu_bw_dl(rq)                 -> exists, takes struct rq *
+ *   arch_scale_cpu_capacity(sd,cpu) -> OLD two-argument form
+ * ============================================================ */
+
+/**
+ * rfx_get_util_k419 - kernel 4.19 compatible util getter for Vorpal v2.2.
+ *
+ * This is schedutil_cpu_util(FREQUENCY_UTIL) inlined, with one difference:
+ * the RT-runnable shortcut is dropped.
+ *
+ * Why drop the shortcut:
+ *   The render path (SurfaceFlinger) is SCHED_FIFO. schedutil_cpu_util()
+ *   returns max whenever any RT task is runnable and uclamp is unused. At
+ *   120fps that fires on nearly every eval, so the governor receives a
+ *   saturated value it cannot shape - the frequency trace sits flat at fmax.
+ *   Whether the shortcut fires depends on a userspace-set static key, which
+ *   is why one platform swung and another did not.
+ *
+ * Everything else matches schedutil_cpu_util(FREQUENCY_UTIL):
+ *   - CFS + RT util summed
+ *   - DL util added; real saturation (no idle time) still goes to max
+ *   - IRQ time scaled in
+ *   - DL bandwidth added
+ *
+ * The 25% DVFS margin stays here because Vorpal maps util->freq itself
+ * (fmax * util / cap) rather than through map_util_freq().
+ */
+void rfx_get_util_k419(int cpu, unsigned long boost,
+			unsigned long *out_util, unsigned long *out_bw_min)
+{
+	struct rq *rq = cpu_rq(cpu);
+	unsigned long util, dl_util, irq, max_cap;
+
+	max_cap = (unsigned long)arch_scale_cpu_capacity(NULL, cpu);
+
+	*out_bw_min = cpu_bw_dl(rq);
+
+	/* IRQ saturation shortcut: IRQ alone eats the CPU */
+	irq = cpu_util_irq(rq);
+	if (unlikely(irq >= max_cap)) {
+		util = max_cap;
+		goto boosted;
+	}
+
+	/* CFS + RT. v2.2 inlines schedutil_cpu_util() but drops its
+	 * RT-runnable early-return; RT time still counts as a measured
+	 * PELT average, which is what we want here. */
+	util = cpu_util_cfs(rq) + cpu_util_rt(rq);
+
+	dl_util = cpu_util_dl(rq);
+	/* Real saturation: no idle time left, fmax is correct here. */
+	if (util + dl_util >= max_cap) {
+		util = max_cap;
+		goto boosted;
+	}
+
+	/* scale_irq_capacity() equivalent (inline to avoid symbol dep):
+	 *              1 - irq
+	 *   U' = irq + ------- * U
+	 *                max
+	 */
+	util = util + (irq * (max_cap - util) / max_cap);
+	util += irq + cpu_bw_dl(rq);
+	util = min(util, max_cap);
+
+boosted:
+	if (boost > util)
+		util = boost;
+
+	/* 25% DVFS headroom — equivalent to map_util_perf() in newer kernels */
+	util = util + (util >> 2);
+
+	*out_util = min(util, max_cap);
+}
+EXPORT_SYMBOL_GPL(rfx_get_util_k419);
+
+/**
+ * rfx_dl_bw_exceeded_k419 - DL bandwidth check for Vorpal.
+ */
+bool rfx_dl_bw_exceeded_k419(int cpu, unsigned long bw_min)
+{
+	return cpu_bw_dl(cpu_rq(cpu)) > bw_min;
+}
+EXPORT_SYMBOL_GPL(rfx_dl_bw_exceeded_k419);
+
+/**
+ * rfx_setattr_sugov_k419 - put Vorpal's DVFS worker in the SUGOV DL class.
+ *
+ * SCHED_FLAG_SUGOV is private to kernel/sched, so the governor cannot build
+ * the sched_attr itself. Same fake bandwidth as sugov_kthread_create():
+ * admission control and the DL timers all skip a special entity, so the
+ * numbers are only there to satisfy __checkparam_dl.
+ */
+int rfx_setattr_sugov_k419(struct task_struct *t)
+{
+	struct sched_attr attr = {
+		.size		= sizeof(struct sched_attr),
+		.sched_policy	= SCHED_DEADLINE,
+		.sched_flags	= SCHED_FLAG_SUGOV,
+		.sched_nice	= 0,
+		.sched_priority	= 0,
+		.sched_runtime	=  1000000,
+		.sched_deadline = 10000000,
+		.sched_period	= 10000000,
+	};
+
+	return sched_setattr_nocheck(t, &attr);
+}
+EXPORT_SYMBOL_GPL(rfx_setattr_sugov_k419);
