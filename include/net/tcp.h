@@ -1073,6 +1073,8 @@ struct tcp_congestion_ops {
 
 	/* return slow start threshold (required) */
 	u32 (*ssthresh)(struct sock *sk);
+	/* return minimum TSO segment size */
+    u32 (*min_tso_segs)(struct sock *sk);
 	/* do new cwnd calculation (required) */
 	void (*cong_avoid)(struct sock *sk, u32 ack, u32 acked);
 	/* call before changing ca_state (optional) */
