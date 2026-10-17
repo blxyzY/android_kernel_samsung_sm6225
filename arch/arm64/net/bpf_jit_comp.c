@@ -362,7 +362,8 @@ static int build_insn(const struct bpf_insn *insn, struct jit_ctx *ctx)
 	const s16 off = insn->off;
 	const s32 imm = insn->imm;
 	const int i = insn - ctx->prog->insnsi;
-	const bool is64 = BPF_CLASS(code) == BPF_ALU64;
+	const bool is64 = BPF_CLASS(code) == BPF_ALU64 ||
+			  BPF_CLASS(code) == BPF_JMP;
 	const bool isdw = BPF_SIZE(code) == BPF_DW;
 	u8 jmp_cond, reg;
 	s32 jmp_offset;
@@ -559,7 +560,17 @@ emit_bswap_uxt:
 	case BPF_JMP | BPF_JSLT | BPF_X:
 	case BPF_JMP | BPF_JSGE | BPF_X:
 	case BPF_JMP | BPF_JSLE | BPF_X:
-		emit(A64_CMP(1, dst, src), ctx);
+	case BPF_JMP32 | BPF_JEQ | BPF_X:
+	case BPF_JMP32 | BPF_JGT | BPF_X:
+	case BPF_JMP32 | BPF_JLT | BPF_X:
+	case BPF_JMP32 | BPF_JGE | BPF_X:
+	case BPF_JMP32 | BPF_JLE | BPF_X:
+	case BPF_JMP32 | BPF_JNE | BPF_X:
+	case BPF_JMP32 | BPF_JSGT | BPF_X:
+	case BPF_JMP32 | BPF_JSLT | BPF_X:
+	case BPF_JMP32 | BPF_JSGE | BPF_X:
+	case BPF_JMP32 | BPF_JSLE | BPF_X:
+		emit(A64_CMP(is64, dst, src), ctx);
 emit_cond_jmp:
 		jmp_offset = bpf2a64_offset(i + off, i, ctx);
 		check_imm19(jmp_offset);
@@ -601,7 +612,8 @@ emit_cond_jmp:
 		emit(A64_B_(jmp_cond, jmp_offset), ctx);
 		break;
 	case BPF_JMP | BPF_JSET | BPF_X:
-		emit(A64_TST(1, dst, src), ctx);
+	case BPF_JMP32 | BPF_JSET | BPF_X:
+		emit(A64_TST(is64, dst, src), ctx);
 		goto emit_cond_jmp;
 	/* IF (dst COND imm) JUMP off */
 	case BPF_JMP | BPF_JEQ | BPF_K:
@@ -614,12 +626,23 @@ emit_cond_jmp:
 	case BPF_JMP | BPF_JSLT | BPF_K:
 	case BPF_JMP | BPF_JSGE | BPF_K:
 	case BPF_JMP | BPF_JSLE | BPF_K:
-		emit_a64_mov_i(1, tmp, imm, ctx);
-		emit(A64_CMP(1, dst, tmp), ctx);
+	case BPF_JMP32 | BPF_JEQ | BPF_K:
+	case BPF_JMP32 | BPF_JGT | BPF_K:
+	case BPF_JMP32 | BPF_JLT | BPF_K:
+	case BPF_JMP32 | BPF_JGE | BPF_K:
+	case BPF_JMP32 | BPF_JLE | BPF_K:
+	case BPF_JMP32 | BPF_JNE | BPF_K:
+	case BPF_JMP32 | BPF_JSGT | BPF_K:
+	case BPF_JMP32 | BPF_JSLT | BPF_K:
+	case BPF_JMP32 | BPF_JSGE | BPF_K:
+	case BPF_JMP32 | BPF_JSLE | BPF_K:
+		emit_a64_mov_i(is64, tmp, imm, ctx);
+		emit(A64_CMP(is64, dst, tmp), ctx);
 		goto emit_cond_jmp;
 	case BPF_JMP | BPF_JSET | BPF_K:
-		emit_a64_mov_i(1, tmp, imm, ctx);
-		emit(A64_TST(1, dst, tmp), ctx);
+	case BPF_JMP32 | BPF_JSET | BPF_K:
+		emit_a64_mov_i(is64, tmp, imm, ctx);
+		emit(A64_TST(is64, dst, tmp), ctx);
 		goto emit_cond_jmp;
 	/* function call */
 	case BPF_JMP | BPF_CALL:
@@ -744,10 +767,8 @@ emit_cond_jmp:
 		}
 		break;
 
-	/* STX XADD: lock *(u32 *)(dst + off) += src */
-	case BPF_STX | BPF_XADD | BPF_W:
-	/* STX XADD: lock *(u64 *)(dst + off) += src */
-	case BPF_STX | BPF_XADD | BPF_DW:
+	case BPF_STX | BPF_ATOMIC | BPF_W:
+	case BPF_STX | BPF_ATOMIC | BPF_DW:
 		if (!off) {
 			reg = dst;
 		} else {
@@ -755,15 +776,84 @@ emit_cond_jmp:
 			emit(A64_ADD(1, tmp, tmp, dst), ctx);
 			reg = tmp;
 		}
-		if (cpus_have_cap(ARM64_HAS_LSE_ATOMICS)) {
-			emit(A64_STADD(isdw, reg, src), ctx);
-		} else {
+
+		if (insn->imm == BPF_ADD || insn->imm == BPF_AND ||
+		    insn->imm == BPF_OR || insn->imm == BPF_XOR) {
+			/* lock *(u32/u64 *)(dst + off) <op>= src */
 			emit(A64_LDXR(isdw, tmp2, reg), ctx);
-			emit(A64_ADD(isdw, tmp2, tmp2, src), ctx);
+			switch (insn->imm) {
+			case BPF_ADD:
+				emit(A64_ADD(isdw, tmp2, tmp2, src), ctx);
+				break;
+			case BPF_AND:
+				emit(A64_AND(isdw, tmp2, tmp2, src), ctx);
+				break;
+			case BPF_OR:
+				emit(A64_ORR(isdw, tmp2, tmp2, src), ctx);
+				break;
+			default:
+				emit(A64_EOR(isdw, tmp2, tmp2, src), ctx);
+				break;
+			}
 			emit(A64_STXR(isdw, tmp2, reg, tmp3), ctx);
 			jmp_offset = -3;
 			check_imm19(jmp_offset);
 			emit(A64_CBNZ(0, tmp3, jmp_offset), ctx);
+		} else if (insn->imm == (BPF_ADD | BPF_FETCH) ||
+			   insn->imm == (BPF_AND | BPF_FETCH) ||
+			   insn->imm == (BPF_OR | BPF_FETCH) ||
+			   insn->imm == (BPF_XOR | BPF_FETCH)) {
+			/* src_reg = atomic_fetch_<op>(dst + off, src_reg) */
+			const u8 ax = bpf2a64[BPF_REG_AX];
+
+			emit(A64_MOV(isdw, ax, src), ctx);
+			emit(A64_LDXR(isdw, src, reg), ctx);
+			switch (insn->imm) {
+			case BPF_ADD | BPF_FETCH:
+				emit(A64_ADD(isdw, tmp2, src, ax), ctx);
+				break;
+			case BPF_AND | BPF_FETCH:
+				emit(A64_AND(isdw, tmp2, src, ax), ctx);
+				break;
+			case BPF_OR | BPF_FETCH:
+				emit(A64_ORR(isdw, tmp2, src, ax), ctx);
+				break;
+			default:
+				emit(A64_EOR(isdw, tmp2, src, ax), ctx);
+				break;
+			}
+			emit(A64_STLXR(isdw, tmp2, reg, tmp3), ctx);
+			jmp_offset = -3;
+			check_imm19(jmp_offset);
+			emit(A64_CBNZ(0, tmp3, jmp_offset), ctx);
+			emit(A64_DMB_ISH, ctx);
+		} else if (insn->imm == BPF_XCHG) {
+			/* src_reg = atomic_xchg(dst + off, src_reg) */
+			emit(A64_MOV(isdw, tmp2, src), ctx);
+			emit(A64_LDXR(isdw, src, reg), ctx);
+			emit(A64_STLXR(isdw, tmp2, reg, tmp3), ctx);
+			jmp_offset = -2;
+			check_imm19(jmp_offset);
+			emit(A64_CBNZ(0, tmp3, jmp_offset), ctx);
+			emit(A64_DMB_ISH, ctx);
+		} else if (insn->imm == BPF_CMPXCHG) {
+			/* r0 = atomic_cmpxchg(dst + off, r0, src_reg) */
+			const u8 r0 = bpf2a64[BPF_REG_0];
+
+			emit(A64_MOV(isdw, tmp2, r0), ctx);
+			emit(A64_LDXR(isdw, r0, reg), ctx);
+			emit(A64_EOR(isdw, tmp3, r0, tmp2), ctx);
+			jmp_offset = 4;
+			check_imm19(jmp_offset);
+			emit(A64_CBNZ(isdw, tmp3, jmp_offset), ctx);
+			emit(A64_STLXR(isdw, src, reg, tmp3), ctx);
+			jmp_offset = -4;
+			check_imm19(jmp_offset);
+			emit(A64_CBNZ(0, tmp3, jmp_offset), ctx);
+			emit(A64_DMB_ISH, ctx);
+		} else {
+			pr_err_once("unknown atomic op code %02x\n", insn->imm);
+			return -EINVAL;
 		}
 		break;
 
