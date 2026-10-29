@@ -84,6 +84,16 @@ int ip_forward(struct sk_buff *skb)
 	struct ip_options *opt	= &(IPCB(skb)->opt);
 	struct net *net;
 
+	/* --- HOTSPOT TETHERING FIX FOR WLAN1 / SWLAN0 --- */
+	if (skb->dev) {
+		if (strncmp(skb->dev->name, "wlan1", 5) == 0 ||
+		    strncmp(skb->dev->name, "swlan0", 6) == 0 ||
+		    strncmp(skb->dev->name, "ap0", 3) == 0) {
+			IPCB(skb)->flags |= IPSKB_FORWARDED;
+		}
+	}
+	/* ----------------------------------------------- */
+
 	/* that should never happen */
 	if (skb->pkt_type != PACKET_HOST)
 		goto drop;
