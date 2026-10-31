@@ -46,8 +46,6 @@ enum {
 	__IFLA_RMNET_EXT_MAX,
 };
 
-#define IFLA_RMNET_EXT_MAX	(__IFLA_RMNET_EXT_MAX - 1)
-
 static const struct nla_policy rmnet_policy[__IFLA_RMNET_EXT_MAX] = {
 	[IFLA_RMNET_MUX_ID] = {
 		.type = NLA_U16
