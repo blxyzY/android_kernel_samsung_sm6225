@@ -460,6 +460,15 @@ struct drm_connector_state {
 	 * Used by the atomic helpers to select the encoder, through the
 	 * &drm_connector_helper_funcs.atomic_best_encoder or
 	 * &drm_connector_helper_funcs.best_encoder callbacks.
+	 *
+	 * This is also used in the atomic helpers to map encoders to their
+	 * current and previous connectors, see
+	 * &drm_atomic_get_old_connector_for_encoder() and
+	 * &drm_atomic_get_new_connector_for_encoder().
+	 *
+	 * NOTE: Atomic drivers must fill this out (either themselves or through
+	 * helpers), for otherwise the GETCONNECTOR and GETENCODER IOCTLs will
+	 * not return correct data to userspace.
 	 */
 	struct drm_encoder *best_encoder;
 
@@ -1355,13 +1364,13 @@ struct drm_tile_group {
 	struct kref refcount;
 	struct drm_device *dev;
 	int id;
-	u8 group_data[8];
+	u8 group_data[9];
 };
 
 struct drm_tile_group *drm_mode_create_tile_group(struct drm_device *dev,
-						  char topology[8]);
+						  char topology_id[9]);
 struct drm_tile_group *drm_mode_get_tile_group(struct drm_device *dev,
-					       char topology[8]);
+					       char topology_id[9]);
 void drm_mode_put_tile_group(struct drm_device *dev,
 			     struct drm_tile_group *tg);
 
