@@ -10,7 +10,7 @@ build_kernel() {
 
     export PATH=$(pwd)/llvm-21/bin:$PATH
 
-    BUILD_VAR="-j$(nproc) -C $(pwd) O=$(pwd)/out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1"
+    BUILD_VAR="-j$(nproc) -C $(pwd) O=$(pwd)/out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 KCFLAGS=-w"
 
     cat arch/arm64/configs/sdmmagpie_defconfig arch/arm64/configs/a23_eur_open_defconfig > arch/arm64/configs/temp_defconfig
 
