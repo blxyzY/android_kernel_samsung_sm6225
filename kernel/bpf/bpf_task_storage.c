@@ -17,8 +17,34 @@
 #include <uapi/linux/btf.h>
 #include <linux/btf_ids.h>
 #include <linux/fdtable.h>
+#include <linux/file.h>
+#include <linux/err.h>
 
 DEFINE_BPF_STORAGE_CACHE(task_cache);
+
+/* 4.19 has pidfd_open() but not the pidfd_get_pid() helper that the 5.15
+ * task storage code uses (added in 5.15 with the same semantics).
+ */
+static struct pid *pidfd_get_pid(unsigned int fd, unsigned int *flags)
+{
+	struct fd f;
+	struct pid *pid;
+
+	f = fdget(fd);
+	if (!f.file)
+		return ERR_PTR(-EBADF);
+
+	if (f.file->f_op != &pidfd_fops) {
+		fdput(f);
+		return ERR_PTR(-EBADF);
+	}
+
+	pid = get_pid(f.file->private_data);
+	*flags = f.file->f_flags;
+	fdput(f);
+	return pid;
+}
+
 
 static struct bpf_local_storage __rcu **task_storage_ptr(void *owner)
 {
@@ -207,7 +233,7 @@ BPF_CALL_4(bpf_task_storage_get, struct bpf_map *, map, struct task_struct *,
 		return (unsigned long)sdata->data;
 
 	/* Only allocate new storage while the task is still refcounted. */
-	if (atomic_read(&task->usage) &&
+	if (refcount_read(&task->usage) &&
 	    (flags & BPF_LOCAL_STORAGE_GET_F_CREATE)) {
 		sdata = bpf_local_storage_update(
 			task, (struct bpf_local_storage_map *)map, value,

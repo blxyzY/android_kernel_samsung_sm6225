@@ -1127,6 +1127,7 @@ int __cgroup_bpf_run_filter_sock_addr(struct sock *sk,
 		.t_ctx = t_ctx,
 	};
 	struct sockaddr_storage unspec;
+	struct bpf_prog_array *prog_array;
 	struct cgroup *cgrp;
 	int ret;
 
