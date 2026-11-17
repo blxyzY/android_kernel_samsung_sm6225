@@ -1852,6 +1852,7 @@ free_channel:
 static void qcom_glink_rx_close(struct qcom_glink *glink, unsigned int rcid)
 {
 	struct glink_channel *channel;
+	struct rpmsg_channel_info chinfo;
 	unsigned long flags;
 
 	spin_lock_irqsave(&glink->idr_lock, flags);
