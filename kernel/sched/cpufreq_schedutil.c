@@ -24,6 +24,7 @@ struct sugov_tunables {
 	unsigned int		hispeed_load;
 	unsigned int		hispeed_freq;
 	unsigned int		rtg_boost_freq;
+	unsigned int		rate_limit_us;
 	bool			pl;
 };
 
