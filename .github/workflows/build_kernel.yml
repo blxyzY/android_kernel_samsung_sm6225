@@ -1,0 +1,135 @@
+name: Build zest kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Upload release'
+        type: boolean
+        required: true
+        default: false
+      changelog:
+        description: 'Changelog'
+        type: string
+        required: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+          fetch-depth: 1
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            git \
+            curl \
+            unzip \
+            wget \
+            zip \
+            zstd \
+            python3 \
+            flex \
+            bison \
+            bc \
+            libssl-dev \
+            device-tree-compiler
+
+      - name: Download prebuilt Google clang
+        run: |
+          wget -O llvm.tar.zst https://github.com/Ylarod/setup-ndk-clang/releases/download/prebuilt/clang-linux-x86-ndk-r29-r563880c.tar.zst
+          mkdir -p llvm-21
+          tar -I unzstd -xf llvm.tar.zst -C llvm-21
+          rm llvm.tar.zst
+          llvm-21/bin/clang --version | head -1
+
+      - name: Check required files
+        run: |
+          missing=0
+          for f in \
+            tools/mkdtimg \
+            tools/dtc \
+            mkbootimg/mkbootimg.py \
+            mkbootimg/unpack_bootimg.py \
+            boot-stock.img \
+            arch/arm64/boot/dts/vendor/Makefile \
+            arch/arm64/boot/dts/vendor/qcom/khaje.dts
+          do
+            if [ ! -s "$f" ]; then
+              echo "ERROR: $f tidak ditemukan atau kosong"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+
+          chmod +x tools/mkdtimg tools/dtc
+          ls -lh tools/mkdtimg tools/dtc boot-stock.img
+
+      - name: Build kernel
+        run: |
+          chmod +x build.sh
+          bash build.sh
+
+      - name: Verify release images
+        run: |
+          test -s boot.img || {
+            echo "ERROR: boot.img tidak ditemukan atau kosong"
+            exit 1
+          }
+
+          test -s dtbo.img || {
+            echo "ERROR: dtbo.img tidak ditemukan atau kosong"
+            exit 1
+          }
+
+          ls -lh boot.img dtbo.img
+
+      - name: Generate release version
+        run: |
+          echo "RELEASE_TS=$(date +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+
+          : > version.txt
+          echo "**Device:** Samsung Galaxy A23 4G (SM-A235F)" >> version.txt
+          echo "**Kernel version:** $(cat out/include/config/kernel.release)  " >> version.txt
+          echo >> version.txt
+
+          KHASH="$(git rev-parse HEAD)"
+          echo "**Kernel source:** [$KHASH](https://github.com/${GITHUB_REPOSITORY}/tree/$KHASH)" >> version.txt
+
+          if [ "${{ inputs.release }}" = "true" ] && \
+             [ -n "${{ inputs.changelog }}" ]; then
+            echo >> version.txt
+            echo "**Changelog:**" >> version.txt
+            echo >> version.txt
+            printf "%b\n" "${{ inputs.changelog }}" >> version.txt
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zest-kernel-a23
+          path: |
+            boot.img
+            dtbo.img
+          if-no-files-found: error
+
+      - name: Upload release assets
+        if: ${{ inputs.release }}
+        uses: softprops/action-gh-release@v2.4.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+        with:
+          body_path: version.txt
+          tag_name: "${{ env.RELEASE_TS }}"
+          name: "ZestKernel-A23-${{ env.RELEASE_TS }}"
+          files: |
+            boot.img
+            dtbo.img
+            

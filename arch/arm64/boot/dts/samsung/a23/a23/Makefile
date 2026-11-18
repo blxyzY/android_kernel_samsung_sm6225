@@ -17,8 +17,18 @@ endef
 # KHAJE BASE DTB
 SEC_KHAJE_BASE_DTB := ../../../vendor/qcom/khaje.dtb
 
+# A23 4G (SM6225) EUR open board overlays
+SEC_A23_EUR_OPEN_DTBO := \
+		a23_eur_open_w00_r00.dtbo \
+		a23_eur_open_w00_r01.dtbo \
+		a23_eur_open_w00_r08.dtbo \
+		a23_eur_open_w00_r09.dtbo
+
 $(eval $(call sec_dtbo_build, \
 		$(SEC_SYSTEM_UPDATE_DTBO),$(CONFIG_ARCH_KHAJE),$(SEC_KHAJE_BASE_DTB)))
+
+$(eval $(call sec_dtbo_build, \
+		$(SEC_A23_EUR_OPEN_DTBO),$(CONFIG_SEC_A23_PROJECT),$(SEC_KHAJE_BASE_DTB)))
 
 always          := $(dtb-y)
 subdir-y        := $(dts-dirs)

@@ -31,6 +31,11 @@ subdir-y += zte
 
 dtstree		:= $(srctree)/$(src)
 
+# Qualcomm khaje (SM6225) base DTS/overlay tree
+ifneq ($(wildcard $(dtstree)/vendor/Makefile),)
+subdir-y += vendor
+endif
+
 dtb-$(CONFIG_OF_ALL_DTBS) := $(patsubst $(dtstree)/%.dts,%.dtb, $(foreach d,$(subdir), $(wildcard $(dtstree)/$(d)/*.dts)))
 
 always		:= $(dtb-y)
