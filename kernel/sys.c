@@ -1254,55 +1254,49 @@ static int override_release(char __user *release, size_t len)
 extern struct static_key_false susfs_is_uname_spoof_buffer_set;
 extern void susfs_spoof_uname(struct new_utsname* tmp);
 #endif
+
+static bool is_bpf_uname_caller(void)
+{
+	return !strncmp(current->comm, "bpfloader", 9) ||
+	       !strncmp(current->comm, "netbpfload", 10) ||
+	       !strncmp(current->comm, "netd", 4) ||
+	       !strncmp(current->comm, "uprobestats", 11);
+}
+
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
-    struct new_utsname tmp;
+	struct new_utsname tmp;
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
-	if (!strncmp(current->comm, "bpfloader", 9) ||
-	    !strncmp(current->comm, "netbpfload", 10) ||
-	    !strncmp(current->comm, "netd", 4) ||
-	    !strncmp(current->comm, "uprobestats", 11)) {
-		strcpy(tmp.release, "5.15.136");
-		pr_debug("fake uname: %s release=%s\n",
-			 current->comm, tmp.release);
-	}
 	up_read(&uts_sem);
-	if (copy_to_user(name, &tmp, sizeof(tmp)))
-		return -EFAULT;
 
-    if (current_uid().val == 0 && 
-        (!strncmp(current->comm, "bpfloader", 9) ||
-         !strncmp(current->comm, "netbpfload", 10) ||
-         !strncmp(current->comm, "netd", 4) ||
-         !strncmp(current->comm, "uprobestats", 11))) {
+	if (is_bpf_uname_caller()) {
 #if defined(CONFIG_FAKE_UNAME_5_4)
-        strcpy(tmp.release, "5.4.200");
+		strcpy(tmp.release, "5.4.200");
 #elif defined(CONFIG_FAKE_UNAME_5_10)
-        strcpy(tmp.release, "5.10.200");
+		strcpy(tmp.release, "5.10.200");
 #elif defined(CONFIG_FAKE_UNAME_5_15)
-        strcpy(tmp.release, "5.15.200");
+		strcpy(tmp.release, "5.15.200");
 #elif defined(CONFIG_FAKE_UNAME_6_1)
-        strcpy(tmp.release, "6.1.200");
+		strcpy(tmp.release, "6.1.200");
 #elif defined(CONFIG_FAKE_UNAME_6_6)
-        strcpy(tmp.release, "6.6.200");
+		strcpy(tmp.release, "6.6.200");
 #elif defined(CONFIG_FAKE_UNAME_6_12)
-        strcpy(tmp.release, "6.12.200");
+		strcpy(tmp.release, "6.12.200");
 #endif
-        pr_debug("fake uname: %s/%d release=%s\n",
-                 current->comm, current->pid, tmp.release);
-    }
+		pr_debug("fake uname: %s/%d release=%s\n",
+			 current->comm, current->pid, tmp.release);
+	}
 
 #ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
-    if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
-        susfs_spoof_uname(&tmp);
+	if (static_branch_likely(&susfs_is_uname_spoof_buffer_set))
+		susfs_spoof_uname(&tmp);
 #endif
 
-    up_read(&uts_sem);
-    if (copy_to_user(name, &tmp, sizeof(tmp)))
-        return -EFAULT;
-    return 0;
+	if (copy_to_user(name, &tmp, sizeof(tmp)))
+		return -EFAULT;
+	return 0;
 }
 
 #ifdef __ARCH_WANT_SYS_OLD_UNAME
